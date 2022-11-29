@@ -395,11 +395,6 @@ servingsPerDay (MkPlan _ menu) day = foldl accumServings Dict.empty (Dict.toList
         Just servings => insert r (servings + s) accum
       else accum
 
--- return a list of calories for 
-total
-assignedCalories : MealPlan cals -> Day -> Nat
-assignedCalories plan@(MkPlan _ menu) day = sum (map caloriesPerServing (Dict.toList (servingsPerDay plan day)))
-
 {-- user input --}
 
 -- the interaction is based on servings and calories:
