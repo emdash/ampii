@@ -383,17 +383,20 @@ total
 unassignedServings : MealPlan cals -> Int
 unassignedServings plan = (cast (totalServings plan)) - (cast (assignedServings plan))
 
+total
+accumServings : Day -> Dict String Nat -> ((Day, Meal), Maybe (String, Nat)) -> Dict String Nat
+accumServings day accum ((d, m), Just (r, s)) =
+   if d == day
+   then case (lookup r accum) of
+     Nothing => accum
+     Just servings => insert r (servings + s) accum
+   else accum
+accumServings day accum ((d, m), Nothing) = accum
+
 -- return the list of assigned servings for a given day in the plan
 total
 servingsPerDay : MealPlan cals -> Day -> Dict String Nat
-servingsPerDay (MkPlan _ menu) day = foldl accumServings Dict.empty (Dict.toList menu)
-  where
-    accumServings accum ((d, m), Just (r, s)) =
-      if d == day
-      then case (lookup r accum) of
-        Nothing => accum
-        Just servings => insert r (servings + s) accum
-      else accum
+servingsPerDay (MkPlan _ menu) day = foldl (accumServings day) Dict.empty (Dict.toList menu)
 
 {-- user input --}
 
