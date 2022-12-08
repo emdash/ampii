@@ -18,4 +18,19 @@
 
 module Main
 
-import Shoppping
+import Shopping
+import Data.AVL.Dict
+import Measures
+import Recipes
+import Food
+
+
+||| A Test Meal Plan
+total
+sl : List String
+sl = [
+  "Mapo Tofu",
+  "Toaster Pizza",
+  "Creole Shrimp Etouffee"
+]
+

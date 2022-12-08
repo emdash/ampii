@@ -41,9 +41,10 @@ export Ord Recipe where
   compare x y = compare (name x) (name y)
 
 
-{- Global Recipes Database -}
 
-
+||| Map recipe names to recipe records.
+|||
+||| For now this is hard-coded.
 export total
 recipes : String -> Recipe
 recipes n@"French Toast" = Rx n 1 [
