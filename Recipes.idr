@@ -1,17 +1,32 @@
+{-
+ - A Meal Planner in Idris
+ - Copyright (C) 2022 Brandon Lewis
+ -
+ - This program is free software: you can redistribute it and/or modify
+ - it under the terms of the GNU Affero General Public License as
+ - published by the Free Software Foundation, either version 3 of the
+ - License, or (at your option) any later version.
+ -
+ - This program is distributed in the hope that it will be useful,
+ - but WITHOUT ANY WARRANTY; without even the implied warranty of
+ - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ - GNU Affero General Public License for more details.
+ -
+ - You should have received a copy of the GNU Affero General Public License
+ - along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-}
+
+||| This implements the recipe database.
+||| Each recipe is identified by a unique string title.
 module Recipes
+
+
 import Measures
 
--- list of future enhancements
--- - convert volumetric units to mass, and back
--- - interval arithmetic on ingredients and serving sizes
--- - calculate nutritional info per serving of each recipe
-
-
--- How a food is used within a given recipe
+||| A recipe ingredient is a tuple of food and quantity
 public export data Ingredient = I String Quantity
 
-
--- A recipe is a named list of Ingredients, yielding one or more servings
+||| A Recipe is a list of ingredients, plus some metadata for planning.
 public export
 record Recipe where
   constructor Rx
