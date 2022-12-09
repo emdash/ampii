@@ -16,109 +16,162 @@
  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -}
 
+
+||| A minimal units library for culinary purposes.
+|||
+||| The main goal is generating shopping lists from lists of
+||| recipes. It's not a general-purpose framework for dimensional
+||| analysis.
+|||
+||| Generating shopping lists requires aggregating quantities of
+||| ingredients, when the same ingredient might be specified by
+||| weight, by volume, or by each even within the same recipe: all
+||| quantities within this domain can be equated to mass, since all
+||| foodstuffs have either density or average weight, however, this
+||| conversion depends on the foodstuff in question. Feedback is
+||| welcome here on whether I've used dependent types effectively.
+|||
+||| Therefore, internally, all operations on quantities are normalized
+||| to mass. This allows any two quantities to be added together. For
+||| presentation, normalized quantities are converted to the user's
+||| preferred measurement system as both weight *and* volume, since
+||| either or both may be useful in a shopping context.
+|||
+||| For those cooking in low-earth orbit: I perpetuate the usual
+||| fallacy of conflating mass and force within the US-customary
+||| system, as this is how such units are used in the kitchen.
+|||
+||| For those cooking in europe: you probably don't need this app to
+||| begin with, unless you want to cook from american recipes, in
+||| which case, the unit-conversion features will probably be quite
+||| helpful.
+|||
+||| Design-wise: I'm trying to keep the code in this file agnostic
+||| w/r/t food-stuffs, with the eventual goal of replacing this
+||| library with a general-purpose dimensional-analysis
+||| framework. This is more of an exercise in working with dependent
+||| types than a pragmatic concern. If I cared about being pragmatic,
+||| I wouldn't be writing this in Idris.
+
+
 module Measures
 
 
-{-
-  A minimal units library for culinary purposes.
+||| The ways in which normalization can fail
+public export data Error
+  = UndefinedQuantity
+  | UndefinedDensity
+  | UndefinedWeight
+  | Mismatch a a
+  | Union Error Error
 
-  we only need to support addition and multiplication of mass and
-  volume, and we perpetuate the usual fallacy of conflating mass and
-  force within the us customary system. This library is only
-  appropriate for cooking on earth. Do not use for science or for
-  cooking on mars, etc.
--}
+||| Sizes of whole ingredients
+public export data Size = Small | Med | Large | XLarge | Jumbo
 
--- the type of measurement, independent of unit
+||| How to convert between volume or size + count, and mass.
+public export interface Material m where
+  density : m ->         Maybe Double
+  weights : m -> Size -> Maybe Double
+
+||| A dimensioned quantity, as it would appear in a recipe.
+|||
+||| Any supported unit is valid here.
 public export
-data Measure
-  = ByWeight
-  | ByVolume
-  | ByEach
-  | Error
-
--- units of weight
-public export
-data Weight
-  = Oz   Double
-  | Lb   Double
-  | Gram Double
-
--- units of volume
-public export
-data Volume
-  = Gal   Double
-  | Qt    Double
-  | Pt    Double
-  | C     Double
-  | Floz  Double
-  | Tblsp Double
-  | Tsp   Double
-  | ML    Double
-
-public export
-data Quantity
-  = Wt   Weight
-  | Vol  Volume
-  | Ea   Double
-  | Err
+data Quantity : m -> Type where
+  -- units of weight
+  Oz    : m -> Double -> Quantity m
+  Lb    : m -> Double -> Quantity m
+  Gram  : m -> Double -> Quantity m
+  -- units of volume
+  Gal   : m -> Double -> Quantity m
+  Qt    : m -> Double -> Quantity m
+  Pt    : m -> Double -> Quantity m
+  C     : m -> Double -> Quantity m
+  Floz  : m -> Double -> Quantity m
+  Tblsp : m -> Double -> Quantity m
+  Tsp   : m -> Double -> Quantity m
+  ML    : m -> Double -> Quantity m
+  L     : m -> Double -> Quantity m
+  -- different sizes of individual items
+  Whole : m -> Size -> Double -> Quantity m
+  -- error case
+  Err   : Error -> Quantity m
 
 
-total
-ozToGram : Double -> Double
-ozToGram x = 28.34952 * x
+-- This namespace avoids some name collisions, but may prove
+-- unnecessary in the end
+namespace Normalized
+  {- conversion factors -}
+  total gramsPerOz : Double ; gramsPerOz = 28.34952
+  total mlPerFloz  : Double ; mlPerFloz  = 29.57344
+  total mlPerTsp   : Double ; mlPerTsp   = 5.0
 
-total
-normalizeWeight : Weight -> Double
-normalizeWeight (Oz   x) = ozToGram x
-normalizeWeight (Lb   x) = (ozToGram x) * 16
-normalizeWeight (Gram x) = x
+  ||| Internal quantity type normalizes everything to mass
+  data Mass : Type -> Type where
+    Gram : Material m => Eq m => m -> Double -> Mass m
+    Err  : Error -> Mass m
 
-total
-addWeight : Weight -> Weight -> Weight
-addWeight x y = Gram ((normalizeWeight x) + (normalizeWeight y))
+  ||| Normalize to mass from a volume and material
+  total
+  fromVolume : Material m => Eq m => m -> Double -> Mass m
+  fromVolume what ml = case density what of
+    Just density => Gram what (ml * density)
+    Nothing      => Err UndefinedDensity
 
-total
-scaleWeight : Double -> Weight -> Weight
-scaleWeight s w = Gram (s * (normalizeWeight w))
+  ||| Normalize to mass from (count, size)
+  fromWhole : Material m => Eq m => m -> Size -> Double -> Mass m
+  fromWhole what size count = case weights what size of
+    Just weight => Gram what (weight * count)
+    Nothing     => Err UndefinedWeight
 
-total
-flozToML : Double -> Double
-flozToML x = 29.57344 * x
+  ||| Convert quantity to a Mass
+  toMass : Material m => Eq m => Quantity m -> Mass m
+  toMass (Oz      what x)   = Gram       what (x * gramsPerOz)
+  toMass (Lb      what x)   = Gram       what (x * gramsPerOz * 16)
+  toMass (Gram    what x)   = Gram       what  x
+  toMass (Gal     what x)   = fromVolume what (x * mlPerFloz * 128)
+  toMass (Qt      what x)   = fromVolume what (x * mlPerFloz *  32)
+  toMass (Pt      what x)   = fromVolume what (x * mlPerFloz *  16)
+  toMass (C       what x)   = fromVolume what (x * mlPerFloz *   8)
+  toMass (Floz    what x)   = fromVolume what (x * mlPerFloz *   1)
+  toMass (Tblsp   what x)   = fromVolume what (x * mlPerTsp  *   3)
+  toMass (Tsp     what x)   = fromVolume what (x * mlPerTsp  *   1)
+  toMass (ML      what x)   = fromVolume what  x
+  toMass (L       what x)   = fromVolume what (x * 1000)
+  toMass (Whole   what s x) = fromWhole  what s x
+  toMass (Err err)          = Normalized.Err err
 
-total
-tspToML : Double -> Double
-tspToML x = 5 * x
+  ||| Addition of Masses
+  total
+  add : Eq m => Mass m -> Mass m -> Mass m
+  add (Gram this x) (Gram that y)  =
+    if   (this == that)
+    then Gram this (x + y)
+    else Err (Mismatch this that)
+  add (Err err)  (Gram _ _) = Err err
+  add (Gram _ _) (Err  err) = Err err
+  add (Err e1)   (Err  e2)  = Err (Union e1 e2)
 
-total
-normalizeVolume : Volume -> Double
-normalizeVolume (Gal   x) = (flozToML x) * 128
-normalizeVolume (Qt    x) = (flozToML x) *  32
-normalizeVolume (Pt    x) = (flozToML x) *  16
-normalizeVolume (C     x) = (flozToML x) *   8
-normalizeVolume (Floz  x) = (flozToML x)
-normalizeVolume (Tblsp x) = (tspToML  x) *   3
-normalizeVolume (Tsp   x) = (tspToML  x)
-normalizeVolume (ML    x) = x
+  ||| Scaling of Masses
+  total
+  scale : Double -> Mass m -> Mass m
+  scale scale (Gram what x) = Gram what (scale * x)
+  scale scale (Err  err)    = Err err
 
-total
-addVolume : Volume -> Volume -> Volume
-addVolume x y = ML ((normalizeVolume x) + (normalizeVolume y))
+  ||| Convert from Mass to Quantity
+  total
+  fromMass : Material m => Eq m => Mass m -> Quantity m
+  fromMass (Gram what x) = Measures.Gram what x
+  fromMass (Err err)     = Measures.Err  err
 
-total
-scaleVolume : Double -> Volume -> Volume
-scaleVolume s x = ML (s * (normalizeVolume x))
 
+||| Add two quantities
 export total
-addQuantity : (a: Quantity) -> (b: Quantity) -> Quantity
-addQuantity (Wt  x) (Wt  y) = Wt  (addWeight x y)
-addQuantity (Vol x) (Vol y) = Vol (addVolume x y)
-addQuantity (Ea  x) (Ea  y) = Ea  (x + y)
-addQuantity _        _      = Err
+addQuantity : Material m => Eq m => Quantity m -> Quantity m -> Quantity m
+addQuantity x y = fromMass (Normalized.add (toMass x) (toMass y))
 
+
+||| Scale a quantity by a scalar
 export total
-scaleQuantity : Double -> Quantity -> Quantity
-scaleQuantity s (Wt  x) = Wt  (scaleWeight s x)
-scaleQuantity s (Vol x) = Vol (scaleVolume s x)
-scaleQuantity s (Ea  x) = Ea  (s * x)
-scaleQuantity s Err     = Err
+scaleQuantity : Material m => Eq m => Double -> Quantity m -> Quantity m
+scaleQuantity s x = fromMass (Normalized.scale s (toMass x))

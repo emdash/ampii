@@ -17,7 +17,6 @@
 -}
 
 ||| This implements the recipe database.
-||| Each recipe is identified by a unique string title.
 module Recipes
 
 
