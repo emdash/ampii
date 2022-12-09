@@ -23,13 +23,15 @@ module Food
 -- Map food name to preferred source
 export total
 source : String -> String
-source n@"Bread Slice"       = "Grocery Outlet"
-source n@"Pizza Sauce"       = "Scratch"
-source n@"Mozarella"         = "Grocery Outlet"
-source n@"Italian Sausage"   = "Longs"
-source n@"Tortilla"          = "Grocery Outlet"
-source n@"Red Pepper Flakes" = "Winco"
-source n@"Ginger Root"       = "Sunrise"
-source n@"White Pepper"      = "Kiva"
-source _                     = "Any"
+source n@"Bread Slice"        = "Grocery Outlet"
+source n@"Pizza Sauce"        = "Scratch"
+source n@"Mozarella"          = "Grocery Outlet"
+source n@"Italian Sausage"    = "Longs"
+source n@"Tortilla"           = "Grocery Outlet"
+source n@"Red Pepper Flakes"  = "Winco"
+source n@"Ginger Root"        = "Sunrise"
+source n@"White Pepper"       = "Kiva"
+source n@"Sichuan Peppercorn" = "Sunrise"
+source n@"Doubanjiang"        = "Sunrise"
+source _                      = "Any"
 

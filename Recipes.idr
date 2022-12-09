@@ -83,7 +83,7 @@ recipes n@"Creole Shrimp Etouffee" = Rx n 6 [
   I "Celery"                       (Vol (C      1.5)),
   I "Green Bell Pepper"            (Vol (C      1.0)),
   I "Garlic Clove"                 (Ea          3.0),
-  I "Shrimp Stock / Clamp Juice"   (Vol (Floz   8.0)),
+  I "Shrimp Stock / Clam Juice"    (Vol (Floz   8.0)),
   I "Diced Tomatoes"               (Vol (Floz  14.5)),
   I "Creole Seasoning (Salt Free)" (Vol (Tblsp  2.0)),
   I "Black Pepper"                 (Vol (Tsp    0.25)),
