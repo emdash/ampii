@@ -16,16 +16,45 @@
  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -}
 
-||| This implements the recipe database.
+
+||| A DSL and Operations on Recipes
 module Recipes
 
 
 import Measures
 
-||| A recipe ingredient is a tuple of food and quantity
-public export data Ingredient = I String Quantity
 
-||| A Recipe is a list of ingredients, plus some metadata for planning.
+||| All physical unit abbreviations in a flat enumeration
+public export data Unit
+  -- weight
+  = Oz
+  | Lb
+  | Gram 
+  | Gal
+  -- volume
+  | Qt
+  | Pt
+  | C
+  | Floz
+  | Tblsp
+  | Tsp
+  | ML
+  | L
+  -- size
+  | Small
+  | Med
+  | Reg
+  | Large
+  | XLarge
+  | Jumbo
+  | Whole  -- size unspecified
+
+
+||| An ingredient of in a recipe, with its quantity and unit
+public export data Ingredient = Item Double Recipes.Unit String
+
+
+||| A Recipe is a list of ingredient quantities, plus metadata.
 public export
 record Recipe where
   constructor Rx
@@ -33,143 +62,157 @@ record Recipe where
   servings: Nat
   ingredients: List Ingredient
 
+
+||| Recipes are compared by name
 export Eq Recipe where
   x == y = (name x) == (name y)
 
+
+||| Recipes are ordered by name
 export Ord Recipe where
   compare x y = compare (name x) (name y)
 
 
-
-||| Map recipe names to recipe records.
+||| A hard-coded, static recipe database.
 |||
-||| For now this is hard-coded.
+||| Each Recipe is identified by a short string key.
+|||
+||| Eventually the goal would be to support some standard file format,
+||| like meal-master, etc, and reading these off the filesystem. But,
+||| at this point I don't know enough about Idris to do that.
+|||
+||| For now, each are encoded by hand using the DSL defined in this
+||| file.
 export total
 recipes : String -> Recipe
 recipes n@"French Toast" = Rx n 1 [
-  I "Whole Egg"   (Ea 2.0),
-  I "Bread Slice" (Ea 2.0)
+  Item  2.0  Large  "Egg",
+  Item  2.0  Whole  "Bread Slice",
+  Item  1.0  Tblsp  "Butter",
+  Item  1.0  Tblsp  "Maple Syrup"
 ]
 -- https://youtu.be/L76XJqz9PWo
+-- XXX: this recipe is incomplete (and open-ended)
 recipes n@"Shakshuka" = Rx n 2 [
+  Item  2.0  Large "Egg",
+  Item 14.5  Oz    "Diced Tomatoes"
 ]
 recipes n@"Toaster Pizza" = Rx n 1 [
-  I "Tortilla"        (Ea         1.0),
-  I "Pizza Sauce"     (Vol (Tblsp 1.5)),
-  I "Mozarella"       (Wt  (Oz    3.0)),
-  I "Italian Sausage" (Wt  (Oz    1.5))
+  Item  1.0  Med   "Tortilla",
+  Item  1.5  Tblsp "Pizza Sauce",
+  Item  1.5  Oz    "Mozarella",
+  Item  1.5  Oz    "Italian Sausage"
 ]
 -- https://www.thespruceeats.com/stuffed-eggplant-little-shoes-1705821
 recipes n@"Greek Stuffed Eggplant" = Rx n 6 [
-  I "Small Eggplants"   (Ea          6.0),
-  I "Ground Beef"       (Wt  (Lb     0.5)),
-  I "Garlic Clove"      (Ea          2.0),
-  I "Medium Onion"      (Ea          1.0),
-  I "Parsley"           (Vol (C      2.0)),
-  I "Olive Oil"         (Vol (Tblsp 10.0)),
-  I "Grated Parmesian"  (Vol (C      1.0)),
-  I "Tomato"            (Ea          1.0),
-  I "All Purpose Flour" (Vol (Tblsp  2.0)),
-  I "Butter"            (Vol (Tblsp  2.0)),
-  I "Milk"              (Vol (C      1.0)),
-  I "Ground Nutmeg"     (Vol (ML     0.5))
+  Item  1.5  Small "Eggplant",         
+  Item  1.5  Lb    "Ground Beef",
+  Item  1.5  Med   "Garlic Clove",
+  Item  1.5  Med   "Onion",            
+  Item  1.5  C     "Parsley",
+  Item  1.5  Tblsp "Olive Oil",
+  Item  1.5  C     "Grated Parmesian",
+  Item  1.5  Med   "Tomato",
+  Item  1.5  Tblsp "All Purpose Flour",
+  Item  1.5  Tblsp "Butter",
+  Item  1.5  C     "Milk",             
+  Item  1.5  ML    "Ground Nutmeg"
 ]
 -- https://www.thespruceeats.com/creole-shrimp-etouffee-3060807
 recipes n@"Creole Shrimp Etouffee" = Rx n 6 [
-  I "Butter"                       (Vol (Tblsp  7.0)),
-  I "All Purpose Flour"            (Vol (Tblsp  6.0)),
-  I "Large Onion"                  (Ea          1.0),
-  I "Celery"                       (Vol (C      1.5)),
-  I "Green Bell Pepper"            (Vol (C      1.0)),
-  I "Garlic Clove"                 (Ea          3.0),
-  I "Shrimp Stock / Clam Juice"    (Vol (Floz   8.0)),
-  I "Diced Tomatoes"               (Vol (Floz  14.5)),
-  I "Creole Seasoning (Salt Free)" (Vol (Tblsp  2.0)),
-  I "Black Pepper"                 (Vol (Tsp    0.25)),
-  I "Bay Leaf"                     (Ea          1.0),
-  I "Shrimp (Peeled and Deveined)" (Wt  (Lb     1.5)),
-  I "Cooked Rice"                  (Vol (C      2.0))
+  Item  7.0  Tblsp "Butter",                      
+  Item  6.0  Tblsp "All Purpose Flour",
+  Item  1.0  Large "Onion",                       
+  Item  1.5  C     "Celery",                      
+  Item  1.0  C     "Green Bell Pepper",
+  Item  3.0  Large "Garlic Clove",                
+  Item  8.0  Floz  "Shrimp Stock / Clam Juice",
+  Item 14.5  Floz  "Diced Tomatoes",              
+  Item  2.0  Tblsp "Creole Seasoning (Salt Free)",
+  Item  0.2  Tsp   "Black Pepper",
+  Item  1.0  Large "Bay Leaf",                    
+  Item  1.5  Lb    "Shrimp (Peeled and Deveined)",
+  Item  2.0  C     "Cooked Rice"
 ]
 -- https://cooking.nytimes.com/recipes/1021339-ramen-with-charred-scallions-green-beans-and-chile-oil
 recipes n@"Ramen with Scallions" = Rx n 4 [
-  I "Red Pepper Flakes"            (Vol (Tblsp  2.0)),
-  I "Kosher Salt"                  (Vol (Tsp    1.5)),
-  I "Grapeseed Oil"                (Vol (C      0.5)),
-  I "Ginger Root"                  (Ea          0.5),
-  I "Garlic Clove"                 (Ea          2.0),
-  I "Sesame Seeds"                 (Vol (Tsp    2.0)),
-  I "Sesame Oil"                   (Vol (Tsp    1.0)),
-  I "Kosher Salt"                  (Vol (ML     0.0)),
-  I "Ramen Noodles"                (Wt  (Oz    12.0)),
-  I "Scallion"                     (Ea         12.0),
-  I "Grapeseed Oil"                (Vol (Tblsp  3.0)),
-  I "Green Beans"                  (Wt  (Oz    10.0)),
-  I "Ginger Root"                  (Ea          0.5),
-  I "White Pepper"                 (Wt  (Gram   0.0)),
-  I "Sesame Seeds"                 (Vol (Tblsp  1.0))
+  Item  2.0  Tblsp "Red Pepper Flakes",
+  Item  1.5  Tsp   "Kosher Salt",
+  Item  0.5  C     "Grapeseed Oil",
+  Item  0.5  Whole "Ginger Root",               
+  Item  2.0  Whole "Garlic Clove",
+  Item  2.0  Tsp   "Sesame Seeds",
+  Item  1.0  Tsp   "Sesame Oil",
+  Item  0.0  ML    "Kosher Salt",
+  Item 12.0  Oz    "Ramen Noodles",
+  Item 12.0  Whole "Scallion",               
+  Item  3.0  Tblsp "Grapeseed Oil",
+  Item 10.0  Oz    "Green Beans",
+  Item  0.5  Whole "Ginger Root",
+  Item  0.0  Gram  "White Pepper",
+  Item  1.0  Tblsp "Sesame Seeds"
 ]
 -- https://cooking.nytimes.com/recipes/1022479-sheet-pan-gnocchi-with-mushrooms-and-spinach
 recipes n@"Sheet Pan Gnocci" = Rx n 4 [
-  I "Mixed Mushrooms"              (Wt  (Lb     1.0)),
-  I "Potato Gnocci"                (Wt  (Oz    18.0)),
-  I "Olive Oil"                    (Vol (Tblsp  6.0)),
-  I "Scallion"                     (Ea          4.0),
-  I "Large Shallot"                (Ea          1.0),
-  I "Baby Spinach"                 (Wt  (Oz     5.0)),
-  I "Dijon Mustartd"               (Vol (Tblsp  2.0)),
-  I "Horseradish"                  (Vol (Tblsp  2.0)),
-  I "Honey"                        (Vol (Tsp    1.0)),
-  I "Butter (Unsalted)"            (Vol (Tblsp  1.0))
+  Item  1.0  Lb    "Mixed Mushrooms",
+  Item  6.0  Tblsp "Olive Oil",
+  Item  4.0  Whole "Scallion",
+  Item  1.0  Whole "Large Shallot",
+  Item  5.0  Oz    "Baby Spinach",
+  Item  2.0  Tblsp "Dijon Mustartd",
+  Item  2.0  Tblsp "Horseradish",
+  Item  1.0  Tsp   "Honey",
+  Item  1.0  Tblsp "Butter (Unsalted)"
 ]
 -- https://cooking.nytimes.com/recipes/1021842-jamaican-curry-chicken-and-potatoes
 recipes n@"Jamaican Curry Chicken" = Rx n 4 [
-  I "Chicken Thighs"               (Wt  (Lb     3.0)),
-  I "Garlic Powder"                (Vol (Tblsp  4.0)),
-  I "Kosher Salt"                  (Vol (Tsp    2.0)),
-  I "Olive Oil"                    (Vol (Tblsp  2.0)),
-  I "Large Onion"                  (Ea          1.0),
-  I "Garlic Clove"                 (Ea          4.0),
-  I "Jamaican Curry Powder"        (Vol (Tblsp  2.0)),
-  I "Scotch Bonnet"                (Ea          1.0),
-  I "Medium Yukon Gold Potato"     (Ea          4.0),
-  I "Chicken Stock"                (Vol (Qt     2.0)),
-  I "Bay Leaf"                     (Ea          1.0),
-  I "Fresh Time Sprig"             (Ea          2.0),
-  I "Cornstarch"                   (Vol (C      1.0)),
-  I "Cooked White Rice"            (Vol (C      2.0))
+  Item  3.0  Lb    "Chicken Thighs",
+  Item  4.0  Tblsp "Garlic Powder",
+  Item  2.0  Tsp   "Kosher Salt",
+  Item  2.0  Tblsp "Olive Oil",
+  Item  1.0  Whole "Large Onion",
+  Item  4.0  Whole "Garlic Clove",
+  Item  2.0  Tblsp "Jamaican Curry Powder",
+  Item  1.0  Whole "Scotch Bonnet",              
+  Item  4.0  Med   "Yukon Gold Potato",
+  Item  2.0  Qt    "Chicken Stock",              
+  Item  1.0  Whole "Bay Leaf",                   
+  Item  2.0  Whole "Fresh Time Sprig",
+  Item  1.0  C     "Cornstarch",
+  Item  2.0  C     "Cooked White Rice"
 ]
 -- https://cooking.nytimes.com/recipes/1021066-chile-crisp-shrimp-and-green-beans
 recipes n@"Chile-Crisp Shrimp" = Rx n 4 [
-  I "Low Sodium Soy Sauce"         (Vol (Tblsp  1.0)),
-  I "Granulated Sugar"             (Vol (Tsp    1.0)),
-  I "Red Pepper Flakes"            (Vol (Tsp    1.0)),
-  I "Ground Cumin"                 (Vol (Tsp    0.75)),
-  I "Shrimp (Peeled and Deveined)" (Wt  (Lb     1.0)),
-  I "Kosher Salt"                  (Vol (Tsp    1.0)),
-  I "Black Pepper"                 (Vol (Tsp    1.0)),
-  I "Garlic Clove"                 (Ea          4.0),
-  I "Cinnamon Stick"               (Ea          1.0),
-  I "Green Beans"                  (Wt  (Oz    10.0)),
-  I "Roasted, Salted Peanuts"      (Vol (C      0.25))
+  Item  1.0  Tblsp "Low Sodium Soy Sauce",
+  Item  1.0  Tsp   "Granulated Sugar",
+  Item  1.0  Tsp   "Red Pepper Flakes",
+  Item  0.7  Tsp   "Ground Cumin",
+  Item  1.0  Lb    "Shrimp (Peeled and Deveined)",
+  Item  1.0  Tsp   "Kosher Salt",
+  Item  1.0  Tsp   "Black Pepper",
+  Item  4.0  Whole "Garlic Clove",
+  Item  1.0  Whole "Cinnamon Stick",
+  Item 10.0  Oz    "Green Beans",
+  Item  0.2  C     "Roasted, Salted Peanuts"     
 ]
 -- https://cooking.nytimes.com/recipes/8135-roasted-cod-and-potatoes
 recipes n@"Roasted Cod and Potatoes" = Rx n 4 [
-  I "Medium Potatoes"              (Ea          5.0),
-  I "Butter"                       (Vol (Tblsp  6.0)),
-  I "Cod Fillets"                  (Wt  (Lb     1.5))
+  Item  5.0  Med   "Medium Potatoes",
+  Item  5.0  Tblsp "Butter",
+  Item  5.0  Lb    "Cod Fillets"
 ]
 -- https://www.pbs.org/food/recipes/mapo-tofu/
 recipes n@"Mapo Tofu" = Rx n 3 [
-  I "Low Sodium Chicken Broth"     (Vol (C      0.5)),
-  I "Corn Starch"                  (Vol (Tsp    2.0)),
-  I "Sugar"                        (Vol (Tsp    1.0)),
-  I "Sesame Oil"                   (Vol (Tblsp  1.0)),
-  I "Garlic Clove"                 (Ea          2.0),
-  I "Scallion"                     (Ea          4.0),
-  I "Black Bean Paste"             (Vol (Tblsp  1.0)),
-  I "Sichuan Peppercorn"           (Vol (Tsp    0.5)),
-  I "Ground Pork"                  (Wt  (Oz     6.0)),
-  I "Doubanjiang"                  (Vol (Tsp    2.0)),
-  I "Silken Tofu"                  (Wt  (Oz    14.0))
+  Item  0.5  C     "Low Sodium Chicken Broth",
+  Item  2.0  Tsp   "Corn Starch",             
+  Item  1.0  Tsp   "Sugar",                   
+  Item  1.0  Tblsp "Sesame Oil",              
+  Item  2.0  Whole "Garlic Clove",            
+  Item  4.0  Whole "Scallion",                
+  Item  1.0  Tblsp "Black Bean Paste",        
+  Item  0.5  Tsp   "Sichuan Peppercorn",      
+  Item  6.0  Oz    "Ground Pork",             
+  Item  2.0  Tsp   "Doubanjiang",             
+  Item  4.0  Oz    "Silken Tofu"             
 ]
 recipes _ = Rx "Unknown" 0 []

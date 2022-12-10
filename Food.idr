@@ -17,7 +17,7 @@
 -}
 
 
-||| Food-Specific Conversion Factors
+||| A Food Database
 module Food
 
 
@@ -27,13 +27,14 @@ import Measures
 ||| Maps a food name to a preferred source for said food.
 |||
 ||| XXX: I haven't thought too deeply about what constitutes
-||| `source`. It's a retail store 99% of the time, but could be a
-||| neighbor, a buyer's club, your garden, etc. For now it's just
-||| taken to be a unique string.
+||| `source`. For now it's just taken to be a unique string.
 |||
-||| XXX: These should be `Data.AVL.Set String`. A food could have
+||| XXX: Return type should be `Set String`. A food could have
 ||| multiple preferred sources, possibly with a (partial or
-||| total)-ordering across sources (either per-food or globally).
+||| total)-ordering across sources (either per-food or globally). The
+||| reason I'm not modeling this right now is that I'm not sure of the
+||| best way to present that information. For now grouping things by a
+||| single store is good enough.
 export total
 source : String -> String
 source n@"Bread Slice"        = "Grocery Outlet"
@@ -54,23 +55,34 @@ total
 density : String -> Maybe Double
 density _ = Nothing
 
-||| Map food Size, Food to weight in grams
--- tbd: this is where interval math would be injected.
+||| XXX: kindof duplicating work, but will need to refactor in order
+||| to allow using units here instead of double
 total
-avgWeight : String -> Size -> Maybe Double
+ounce : Double -> Double
+ounce x = gramsPerOz * x
+
+||| Map food Size, Food to weight in grams
+|||
+||| XXX: interval math?
+total
+weights : String -> Size -> Maybe Double
 -- onions
 -- source: https://howdykitchen.com/medium-onion-size/
-avgWeight "Onion" Small  = Just (Oz 4.0)
-avgWeight "Onion" Medium = Just (Oz 7.0)
-avgWeight "Onion" Large  = Just (Oz 11.0)
+weights "Onion" Small  = Just (ounce 4.0)
+weights "Onion" Med    = Just (ounce 7.0)
+weights "Onion" Large  = Just (ounce 11.0)
 -- egg sizes in the US are specified per dozen, not per egg, hence the
 -- divisor.
 -- source: https://www.peteandgerrys.com/blog/egg-size-guide
-avgWeight "Egg"   Small  = Just (Oz 18.0 / 12.0)
-avgWeight "Egg"   Medium = Just (Oz 21.0 / 12.0)
-avgWeight "Egg"   Large  = Just (Oz 24.0 / 12.0)
-avgWeight "Egg"   XLarge = Just (Oz 27.0 / 12.0)
-avgWeight "Egg"   Jumbo  = Jumbo(Oz 30.0 / 12.0)
+weights "Egg"   Small  = Just (ounce 18.0 / 12.0)
+weights "Egg"   Med    = Just (ounce 21.0 / 12.0)
+weights "Egg"   Large  = Just (ounce 24.0 / 12.0)
+weights "Egg"   XLarge = Just (ounce 27.0 / 12.0)
+weights "Egg"   Jumbo  = Just (ounce 30.0 / 12.0)
 -- error case
-avgWeight _      _       = Nothing
+weights _      _       = Nothing
 
+
+export Material String where
+  density = Food.density
+  weights = Food.weights

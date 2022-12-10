@@ -72,39 +72,42 @@ public export data Size = Small | Med | Large | XLarge | Jumbo
 public export interface Material m where
   density : m ->         Maybe Double
   weights : m -> Size -> Maybe Double
+  
+||| Units of weight
+public export data Weight
+  = Oz
+  | Lb
+  | Gram 
+
+||| Units of volume
+public export data Volume
+  = Gal
+  | Qt
+  | Pt
+  | C
+  | Floz
+  | Tblsp
+  | Tsp
+  | ML
+  | L
+
 
 ||| A dimensioned quantity, as it would appear in a recipe.
-|||
-||| Any supported unit is valid here.
 public export
 data Quantity : m -> Type where
-  -- units of weight
-  Oz    : m -> Double -> Quantity m
-  Lb    : m -> Double -> Quantity m
-  Gram  : m -> Double -> Quantity m
-  -- units of volume
-  Gal   : m -> Double -> Quantity m
-  Qt    : m -> Double -> Quantity m
-  Pt    : m -> Double -> Quantity m
-  C     : m -> Double -> Quantity m
-  Floz  : m -> Double -> Quantity m
-  Tblsp : m -> Double -> Quantity m
-  Tsp   : m -> Double -> Quantity m
-  ML    : m -> Double -> Quantity m
-  L     : m -> Double -> Quantity m
-  -- different sizes of individual items
-  Whole : m -> Size -> Double -> Quantity m
-  -- error case
-  Err   : Error -> Quantity m
+  ByWeight : Double -> Weight -> m -> Quantity m
+  ByVolume : Double -> Volume -> m -> Quantity m
+  Whole    : Double -> Size   -> m -> Quantity m
+  Err      : Error                 -> Quantity m
 
 
 -- This namespace avoids some name collisions, but may prove
 -- unnecessary in the end
 namespace Normalized
   {- conversion factors -}
-  total gramsPerOz : Double ; gramsPerOz = 28.34952
-  total mlPerFloz  : Double ; mlPerFloz  = 29.57344
-  total mlPerTsp   : Double ; mlPerTsp   = 5.0
+  export total gramsPerOz : Double ; gramsPerOz = 28.34952
+  export total mlPerFloz  : Double ; mlPerFloz  = 29.57344
+  export total mlPerTsp   : Double ; mlPerTsp   = 5.0
 
   ||| Internal quantity type normalizes everything to mass
   data Mass : Type -> Type where
@@ -126,20 +129,20 @@ namespace Normalized
 
   ||| Convert quantity to a Mass
   toMass : Material m => Eq m => Quantity m -> Mass m
-  toMass (Oz      what x)   = Gram       what (x * gramsPerOz)
-  toMass (Lb      what x)   = Gram       what (x * gramsPerOz * 16)
-  toMass (Gram    what x)   = Gram       what  x
-  toMass (Gal     what x)   = fromVolume what (x * mlPerFloz * 128)
-  toMass (Qt      what x)   = fromVolume what (x * mlPerFloz *  32)
-  toMass (Pt      what x)   = fromVolume what (x * mlPerFloz *  16)
-  toMass (C       what x)   = fromVolume what (x * mlPerFloz *   8)
-  toMass (Floz    what x)   = fromVolume what (x * mlPerFloz *   1)
-  toMass (Tblsp   what x)   = fromVolume what (x * mlPerTsp  *   3)
-  toMass (Tsp     what x)   = fromVolume what (x * mlPerTsp  *   1)
-  toMass (ML      what x)   = fromVolume what  x
-  toMass (L       what x)   = fromVolume what (x * 1000)
-  toMass (Whole   what s x) = fromWhole  what s x
-  toMass (Err err)          = Normalized.Err err
+  toMass (ByWeight x Oz    what) = Gram       what (x * gramsPerOz)
+  toMass (ByWeight x Lb    what) = Gram       what (x * gramsPerOz * 16)
+  toMass (ByWeight x Gram  what) = Gram       what  x
+  toMass (ByVolume x Gal   what) = fromVolume what (x * mlPerFloz * 128)
+  toMass (ByVolume x Qt    what) = fromVolume what (x * mlPerFloz *  32)
+  toMass (ByVolume x Pt    what) = fromVolume what (x * mlPerFloz *  16)
+  toMass (ByVolume x C     what) = fromVolume what (x * mlPerFloz *   8)
+  toMass (ByVolume x Floz  what) = fromVolume what (x * mlPerFloz *   1)
+  toMass (ByVolume x Tblsp what) = fromVolume what (x * mlPerTsp  *   3)
+  toMass (ByVolume x Tsp   what) = fromVolume what (x * mlPerTsp  *   1)
+  toMass (ByVolume x ML    what) = fromVolume what  x
+  toMass (ByVolume x L     what) = fromVolume what (x * 1000)
+  toMass (Whole    x s     what) = fromWhole  what s x
+  toMass (Err err)               = Normalized.Err err
 
   ||| Addition of Masses
   total
@@ -161,7 +164,7 @@ namespace Normalized
   ||| Convert from Mass to Quantity
   total
   fromMass : Material m => Eq m => Mass m -> Quantity m
-  fromMass (Gram what x) = Measures.Gram what x
+  fromMass (Gram what x) = ByWeight x Gram what
   fromMass (Err err)     = Measures.Err  err
 
 
