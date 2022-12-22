@@ -16,31 +16,53 @@
  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -}
 
+||| Represents a meal plan and operations on it.
 module Plan
+
 
 import Data.AVL.Dict
 import Data.AVL.Set
 import Recipes
+import Util
 
--- Mnemonic form for meals
+
+||| An opaque date type.
+|||
+||| Internally, represented as a Julian ordinal.
+|||
+||| XXX: find a good datetime library for Idris
+export data Date = Ordinal Nat
+
+||| Equality is defined on Date, so it may be used as a Set key
+export Eq Date where
+  (==) (Ordinal x) (Ordinal y) = x == y
+
+||| Ordering is defined on Date, so it may be used as a Set key
+export Ord Date where
+  compare (Ordinal x) (Ordinal y) = compare x y
 
 
+||| A Meal type
+|||
+||| XXX: This type hard-codes cultural assumptions. For now,
+||| hard-coding the variants simplifies keeping everything total, but
+||| it should eventually be generalized.
 public export data Meal
   = Breakfast
   | Lunch
   | Dinner
   | Other String
 
-export
-Eq Meal where
+||| Equality is defined on Meal, so it may be used as a Set key.
+export Eq Meal where
   Breakfast == Breakfast = True
   Lunch     == Lunch     = True
   Dinner    == Dinner    = True
   (Other x) == (Other y) = x == y
   _         == _         = False
 
-export
-Ord Meal where
+||| Ordering is defined on Meal, so it may be used as a Set key.
+export Ord Meal where
   compare Breakfast Breakfast = EQ
   compare Breakfast _         = LT
   compare Lunch     Breakfast = GT
@@ -54,42 +76,173 @@ Ord Meal where
   compare (Other x) _         = GT
 
 
--- The usual days of the week on the western calendar
-public export
-data Day
-  = Sun
-  | Mon
-  | Tue
-  | Wed
-  | Thu
-  | Fri
-  | Sat
+||| The user-specified number of meals usually eaten daily.
+|||
+||| XXX: these are hard-coded personal preferences
+total dailyMeals : List Meal
+dailyMeals = [Breakfast, Lunch, Dinner]
 
-export
-asInt : Day -> Nat
-asInt Sun = 0
-asInt Mon = 1
-asInt Tue = 2
-asInt Wed = 3
-asInt Thu = 4
-asInt Fri = 5
-asInt Sat = 6
 
-export
-Eq Day where
-  x == y = (asInt x) == (asInt y)
+||| A meal slot is a tuple of (Date, Meal)
+export total MealSlot : Type
+MealSlot = (Date, Meal)
 
-export
-Ord Day where
-  compare x y = compare (asInt x) (asInt y)
 
--- a meal plan for a given week
+||| A Portion is a recipe and a natural number
+export total Portion : Type
+Portion = (String, Nat)
+
+
+||| A nutrient category for use in nutritional goals
+public export data Nutrient
+  = Calories
+  | Carbs
+  | Fats
+  | Protein
+  | Fiber
+
+export Eq Nutrient where
+  Calories == Calories = True
+  Carbs    == Carbs    = True
+  Fats     == Fats     = True
+  Protein  == Protein  = True
+  Fiber    == Fiber    = True
+  _        == _        = False
+
+-- XXX: this ordering is arbitrary, but required for using with Set so
+-- we don't export it. Is there a way to derive equality in this
+-- situation?
+Ord Nutrient where
+  compare Calories Calories = EQ
+  compare Calories _        = LT
+  compare Carbs    Calories = GT
+  compare Carbs    Carbs    = EQ
+  compare Carbs    _        = LT
+  compare Fats     Calories = GT
+  compare Fats     Carbs    = GT
+  compare Fats     Fats     = EQ
+  compare Fats     _        = LT
+  compare Protein  Calories = GT
+  compare Protein  Carbs    = GT
+  compare Protein  Fats     = GT
+  compare Protein  Protein  = EQ
+  compare Protein  _        = LT
+  compare Fiber    Calories = LT
+  compare Fiber    Carbs    = LT
+  compare Fiber    Fats     = LT
+  compare Fiber    Protein  = LT
+  compare Fiber    Fiber    = EQ
+
+
+||| Represents user-specified nutritional goals
 export
-data MealPlan : (calories : Nat) -> Type where
-  MkPlan
-     : (dishes : Set Recipe)
-    -> (menu : Dict (Day, Meal) (Maybe (String, Nat)))
-    -> MealPlan calories
+Nutrition : Type
+Nutrition = Dict Nutrient Double
+
+||| A type for planning what to eat and when.
+export record MealPlan where
+  constructor Plan
+  ||| A mapping of per-day nutrition targets for planning purposes.
+  dailyGoals  : Nutrition
+  ||| The set of recipes mapped number of servings it yields.
+  portions    : Dict String Nat
+  ||| Maps from meal slots slots to assigned portions
+  menu : Dict MealSlot (Dict String Nat)
+
+
+||| A new, empty meal plan
+export total
+empty : MealPlan
+empty = Plan Dict.empty Dict.empty Dict.empty
+
+
+||| Add a recipe to a meal plan
+|||
+||| Servings represents how many total servings the recipe is expected
+||| to yield for this plan.
+export total
+addRecipe : String -> Nat -> MealPlan -> MealPlan
+addRecipe recipe servings plan = record {
+  portions $= (insert recipe servings)
+} plan
+
+
+||| Add or clear a meal slot to a meal plan
+export total
+addMealSlot : MealSlot -> MealPlan -> MealPlan
+addMealSlot slot plan = record {
+  menu  $= (insert slot Dict.empty)
+} plan
+
+
+||| The ways in which assigning meals to slots can fail
+public export data AssignError
+  = ZeroPortions
+  | NoPortions   String Nat
+  | NoSuchSlot   MealSlot
+  | NoSuchRecipe String
+  | Union        AssignError AssignError
+
+
+||| Try to assign a portion to a meal slot
+|||
+||| This can fail if:
+||| - the given meal slot isn't part of the plan
+||| - the given recipe isn't part of the plan
+||| - we've run out of portions for the given recipe
+||| - we try to assign zero portions of something to a slot
+total
+assignPortion
+  :  MealSlot
+  -> Portion
+  -> Either AssignError MealPlan
+  -> Either AssignError MealPlan
+assignPortion _ _ err@(Left err) = err
+assignPortion
+  slot
+  portion @ (recipe, servings)
+  (Right plan @ (Plan _ portions menu))
+= case lookup slot menu of
+  Nothing       => Left (NoSuchSlot slot)
+  Just assigned => do
+    remaining <- fromMaybe (NoSuchRecipe recipe) (lookup recipe portions)
+    case isLTE servings remaining of
+      (No contra)   => Left (NoPortions recipe servings)
+      (Yes LTEZero) => Left ZeroPortions
+      (Yes LTESucc) => Right (record {
+        portions = (insert recipe (remaining - servings) portions),
+        menu     = (insert slot (foldDict recipe servings assigned) menu)
+      } plan)
+
+
+total
+testPlan : MealPlan
+testPlan
+  = addRecipe     "Gruel" 100
+  $ addRecipe     "Slop"  100
+  $ addMealSlot   (Ordinal 0, Breakfast)
+  $ addMealSlot   (Ordinal 0, Lunch)
+  $ addMealSlot   (Ordinal 0, Dinner)
+  $ addMealSlot   (Ordinal 1, Breakfast)
+  $ addMealSlot   (Ordinal 1, Lunch)
+  $ addMealSlot   (Ordinal 1, Dinner)
+  $ empty
+
+
+total
+testPlan2 : Either AssignError MealPlan
+testPlan2
+  = assignPortion (Ordinal 0, Breakfast) ("Gruel", 10)
+  $ assignPortion (Ordinal 0, Lunch)     ("Slop",   5)
+  $ assignPortion (Ordinal 0, Dinner)    ("Slop",   5)
+  $ assignPortion (Ordinal 1, Breakfast) ("Gruel", 10)
+  $ assignPortion (Ordinal 1, Lunch)     ("Slop",   5)
+  $ assignPortion (Ordinal 1, Dinner)    ("Slop",   5)
+  $ Right testPlan
+
+
+{-
+
 
 -- return total number of servings for the plan
 export total
@@ -148,3 +301,4 @@ newPlan _ = MkPlan Set.empty Dict.empty
 
 -- we can assign servings from each recipe to a given meal slot
 -- we keep doing this until every serving is assigned
+-}
