@@ -101,6 +101,7 @@ public export data Nutrient
   | Protein
   | Fiber
 
+||| Equality is defined for nutrients, so that it may be used with Dict.
 export Eq Nutrient where
   Calories == Calories = True
   Carbs    == Carbs    = True
@@ -109,6 +110,7 @@ export Eq Nutrient where
   Fiber    == Fiber    = True
   _        == _        = False
 
+||| Ordering is defined for nutrients, so that it may be used with Dict.
 -- XXX: this ordering is arbitrary, but required for using with Set so
 -- we don't export it. Is there a way to derive equality in this
 -- situation?
@@ -138,6 +140,7 @@ Ord Nutrient where
 export
 Nutrition : Type
 Nutrition = Dict Nutrient Double
+
 
 ||| A type for planning what to eat and when.
 export record MealPlan where
