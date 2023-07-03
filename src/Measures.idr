@@ -57,8 +57,12 @@
 module Measures
 
 
+%default total
+
+
 ||| The ways in which normalization can fail
-public export data Error
+public export 
+data Error
   = UndefinedQuantity
   | UndefinedDensity
   | UndefinedWeight
@@ -66,21 +70,27 @@ public export data Error
   | Union Error Error
 
 ||| Sizes of whole ingredients
-public export data Size = Small | Med | Large | XLarge | Jumbo
+public export 
+data Size = Small | Med | Large | XLarge | Jumbo
 
 ||| How to convert between volume or size + count, and mass.
-public export interface Material m where
+public export 
+interface Eq m => Material m where
   density : m ->         Maybe Double
   weights : m -> Size -> Maybe Double
-  
+  eq      : m -> m -> Bool
+  eq a b = a == b
+
 ||| Units of weight
-public export data Weight
+public export 
+data Weight
   = Oz
   | Lb
   | Gram 
 
 ||| Units of volume
-public export data Volume
+public export 
+data Volume
   = Gal
   | Qt
   | Pt
@@ -105,30 +115,37 @@ data Quantity : m -> Type where
 -- unnecessary in the end
 namespace Normalized
   {- conversion factors -}
-  export total gramsPerOz : Double ; gramsPerOz = 28.34952
-  export total mlPerFloz  : Double ; mlPerFloz  = 29.57344
-  export total mlPerTsp   : Double ; mlPerTsp   = 5.0
+  export gramsPerOz : Double ; gramsPerOz = 28.34952
+  export mlPerFloz  : Double ; mlPerFloz  = 29.57344
+  export mlPerTsp   : Double ; mlPerTsp   = 5.0
 
   ||| Internal quantity type normalizes everything to mass
   data Mass : Type -> Type where
-    Gram : Material m => Eq m => m -> Double -> Mass m
+    Gram : Material m => m -> Double -> Mass m
     Err  : Error -> Mass m
-
+    
   ||| Normalize to mass from a volume and material
-  total
-  fromVolume : Material m => Eq m => m -> Double -> Mass m
+  export
+  fromVolume : Material m => m -> Double -> Mass m
+  {-
   fromVolume what ml = case density what of
     Just density => Gram what (ml * density)
-    Nothing      => Err UndefinedDensity
+    Nothing      => Err UndefinedDensity 
+  -}
 
   ||| Normalize to mass from (count, size)
+  export
   fromWhole : Material m => Eq m => m -> Size -> Double -> Mass m
+  {-
   fromWhole what size count = case weights what size of
     Just weight => Gram what (weight * count)
     Nothing     => Err UndefinedWeight
+  -}
 
   ||| Convert quantity to a Mass
+  export
   toMass : Material m => Eq m => Quantity m -> Mass m
+  {-
   toMass (ByWeight x Oz    what) = Gram       what (x * gramsPerOz)
   toMass (ByWeight x Lb    what) = Gram       what (x * gramsPerOz * 16)
   toMass (ByWeight x Gram  what) = Gram       what  x
@@ -143,38 +160,45 @@ namespace Normalized
   toMass (ByVolume x L     what) = fromVolume what (x * 1000)
   toMass (Whole    x s     what) = fromWhole  what s x
   toMass (Err err)               = Normalized.Err err
+  -}
 
   ||| Addition of Masses
-  total
-  add : Eq m => Mass m -> Mass m -> Mass m
+  export
+  add : Material m => Mass m -> Mass m -> Mass m
+  {-
   add (Gram this x) (Gram that y)  =
-    if   (this == that)
+    if   (eq this that)
     then Gram this (x + y)
     else Err (Mismatch this that)
   add (Err err)  (Gram _ _) = Err err
   add (Gram _ _) (Err  err) = Err err
   add (Err e1)   (Err  e2)  = Err (Union e1 e2)
+  -}
 
   ||| Scaling of Masses
-  total
+  export
   scale : Double -> Mass m -> Mass m
+  {-
   scale scale (Gram what x) = Gram what (scale * x)
   scale scale (Err  err)    = Err err
+  -}
 
   ||| Convert from Mass to Quantity
-  total
+  export
   fromMass : Material m => Eq m => Mass m -> Quantity m
+  {-
   fromMass (Gram what x) = ByWeight x Gram what
   fromMass (Err err)     = Measures.Err  err
+  -}
 
 
 ||| Add two quantities
-export total
+export
 addQuantity : Material m => Eq m => Quantity m -> Quantity m -> Quantity m
 addQuantity x y = fromMass (Normalized.add (toMass x) (toMass y))
 
 
 ||| Scale a quantity by a scalar
-export total
+export
 scaleQuantity : Material m => Eq m => Double -> Quantity m -> Quantity m
 scaleQuantity s x = fromMass (Normalized.scale s (toMass x))

@@ -19,9 +19,7 @@
 module Main
 
 import Shopping
-import Data.AVL.Dict
 import Measures
-import Recipes
 import Food
 
 
@@ -34,3 +32,7 @@ sl = [
   "Creole Shrimp Etouffee"
 ]
 
+
+main : IO ()
+main = do 
+  putStr "Hello, world!"

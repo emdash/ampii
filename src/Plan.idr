@@ -20,10 +20,13 @@
 module Plan
 
 
-import Data.AVL.Dict
-import Data.AVL.Set
+import Data.Nat
+import Data.HashMap
 import Recipes
 import Util
+
+
+%default total
 
 
 ||| An opaque date type.
@@ -31,14 +34,17 @@ import Util
 ||| Internally, represented as a Julian ordinal.
 |||
 ||| XXX: find a good datetime library for Idris
-export data Date = Ordinal Nat
+export 
+data Date = Ordinal Nat
 
 ||| Equality is defined on Date, so it may be used as a Set key
-export Eq Date where
+export 
+Eq Date where
   (==) (Ordinal x) (Ordinal y) = x == y
 
 ||| Ordering is defined on Date, so it may be used as a Set key
-export Ord Date where
+export 
+Ord Date where
   compare (Ordinal x) (Ordinal y) = compare x y
 
 
@@ -47,14 +53,16 @@ export Ord Date where
 ||| XXX: This type hard-codes cultural assumptions. For now,
 ||| hard-coding the variants simplifies keeping everything total, but
 ||| it should eventually be generalized.
-public export data Meal
+public export 
+data Meal
   = Breakfast
   | Lunch
   | Dinner
   | Other String
 
 ||| Equality is defined on Meal, so it may be used as a Set key.
-export Eq Meal where
+export 
+Eq Meal where
   Breakfast == Breakfast = True
   Lunch     == Lunch     = True
   Dinner    == Dinner    = True
@@ -62,7 +70,8 @@ export Eq Meal where
   _         == _         = False
 
 ||| Ordering is defined on Meal, so it may be used as a Set key.
-export Ord Meal where
+export 
+Ord Meal where
   compare Breakfast Breakfast = EQ
   compare Breakfast _         = LT
   compare Lunch     Breakfast = GT
@@ -79,22 +88,25 @@ export Ord Meal where
 ||| The user-specified number of meals usually eaten daily.
 |||
 ||| XXX: these are hard-coded personal preferences
-total dailyMeals : List Meal
+dailyMeals : List Meal
 dailyMeals = [Breakfast, Lunch, Dinner]
 
 
 ||| A meal slot is a tuple of (Date, Meal)
-export total MealSlot : Type
+export 
+MealSlot : Type
 MealSlot = (Date, Meal)
 
 
 ||| A Portion is a recipe and a natural number
-export total Portion : Type
+export 
+Portion : Type
 Portion = (String, Nat)
 
 
 ||| A nutrient category for use in nutritional goals
-public export data Nutrient
+public export 
+data Nutrient
   = Calories
   | Carbs
   | Fats
@@ -102,7 +114,8 @@ public export data Nutrient
   | Fiber
 
 ||| Equality is defined for nutrients, so that it may be used with Dict.
-export Eq Nutrient where
+export 
+Eq Nutrient where
   Calories == Calories = True
   Carbs    == Carbs    = True
   Fats     == Fats     = True
@@ -139,47 +152,45 @@ Ord Nutrient where
 ||| Represents user-specified nutritional goals
 export
 Nutrition : Type
-Nutrition = Dict Nutrient Double
+Nutrition = HashMap Nutrient Double
 
 
 ||| A type for planning what to eat and when.
-export record MealPlan where
+export 
+record MealPlan where
   constructor Plan
   ||| A mapping of per-day nutrition targets for planning purposes.
   dailyGoals  : Nutrition
   ||| The set of recipes mapped number of servings it yields.
-  portions    : Dict String Nat
+  portions    : HashMap String Nat
   ||| Maps from meal slots slots to assigned portions
-  menu : Dict MealSlot (Dict String Nat)
+  menu : HashMap MealSlot (HashMap String Nat)
 
 
 ||| A new, empty meal plan
-export total
+export
 empty : MealPlan
-empty = Plan Dict.empty Dict.empty Dict.empty
+{- empty = Plan empty empty empty -}
 
 
 ||| Add a recipe to a meal plan
 |||
 ||| Servings represents how many total servings the recipe is expected
 ||| to yield for this plan.
-export total
+export
 addRecipe : String -> Nat -> MealPlan -> MealPlan
-addRecipe recipe servings plan = record {
-  portions $= (insert recipe servings)
-} plan
+addRecipe recipe servings = { portions $= (insert recipe servings) }
 
 
 ||| Add or clear a meal slot to a meal plan
-export total
+export
 addMealSlot : MealSlot -> MealPlan -> MealPlan
-addMealSlot slot plan = record {
-  menu  $= (insert slot Dict.empty)
-} plan
+addMealSlot slot = { menu $= (insert slot empty) }
 
 
 ||| The ways in which assigning meals to slots can fail
-public export data AssignError
+public 
+export data AssignError
   = ZeroPortions
   | NoPortions   String Nat
   | NoSuchSlot   MealSlot
@@ -200,23 +211,21 @@ assignPortion
   -> Portion
   -> Either AssignError MealPlan
   -> Either AssignError MealPlan
-assignPortion _ _ err@(Left err) = err
-assignPortion
-  slot
-  portion @ (recipe, servings)
-  (Right plan @ (Plan _ portions menu))
-= case lookup slot menu of
-  Nothing       => Left (NoSuchSlot slot)
-  Just assigned => do
-    remaining <- fromMaybe (NoSuchRecipe recipe) (lookup recipe portions)
-    case isLTE servings remaining of
-      (No contra)   => Left (NoPortions recipe servings)
-      (Yes LTEZero) => Left ZeroPortions
-      (Yes LTESucc) => Right (record {
-        portions = (insert recipe (remaining - servings) portions),
-        menu     = (insert slot (foldDict recipe servings assigned) menu)
-      } plan)
-
+{-
+assignPortion _ _ err@(Left _) = err
+assignPortion slot portion @ (recipe, servings) (Right plan @ (Plan _ portions menu)) =
+    case lookup slot menu of
+    Nothing       => Left (NoSuchSlot slot)
+    Just assigned => do
+        remaining <- fromMaybe (NoSuchRecipe recipe) (lookup recipe portions)
+        case isLTE servings remaining of
+          (No contra)   => Left (NoPortions recipe servings)
+          (Yes LTEZero) => Left ZeroPortions
+          (Yes LTESucc) => Right ({
+            portions $= (insert recipe (remaining - servings)),
+            menu     $= (insert slot (foldDict recipe servings assigned))
+          } plan)
+-}
 
 total
 testPlan : MealPlan

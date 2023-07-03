@@ -25,7 +25,8 @@ import Measures
 
 
 ||| All physical unit abbreviations in a flat enumeration
-public export data Unit
+public export 
+data Unit
   -- weight
   = Oz
   | Lb
@@ -51,7 +52,8 @@ public export data Unit
 
 
 ||| An ingredient of in a recipe, with its quantity and unit
-public export data Ingredient = Item Double Recipes.Unit String
+public export 
+data Ingredient = Item Double Recipes.Unit String
 
 
 ||| A Recipe is a list of ingredient quantities, plus metadata.
@@ -64,12 +66,14 @@ record Recipe where
 
 
 ||| Recipes are compared by name
-export Eq Recipe where
+export 
+Eq Recipe where
   x == y = (name x) == (name y)
 
 
 ||| Recipes are ordered by name
-export Ord Recipe where
+export 
+Ord Recipe where
   compare x y = compare (name x) (name y)
 
 

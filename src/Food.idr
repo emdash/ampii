@@ -24,6 +24,9 @@ module Food
 import Measures
 
 
+%default total
+
+
 ||| Maps a food name to a preferred source for said food.
 |||
 ||| XXX: I haven't thought too deeply about what constitutes
@@ -35,7 +38,7 @@ import Measures
 ||| reason I'm not modeling this right now is that I'm not sure of the
 ||| best way to present that information. For now grouping things by a
 ||| single store is good enough.
-export total
+export
 source : String -> String
 source n@"Bread Slice"        = "Grocery Outlet"
 source n@"Pizza Sauce"        = "Scratch"
@@ -51,20 +54,17 @@ source _                      = "Any"
 
 
 ||| Map food name to a density in g/mL, where appropriate
-total
 density : String -> Maybe Double
 density _ = Nothing
 
 ||| XXX: kindof duplicating work, but will need to refactor in order
 ||| to allow using units here instead of double
-total
 ounce : Double -> Double
 ounce x = gramsPerOz * x
 
 ||| Map food Size, Food to weight in grams
 |||
 ||| XXX: interval math?
-total
 weights : String -> Size -> Maybe Double
 -- onions
 -- source: https://howdykitchen.com/medium-onion-size/
@@ -83,6 +83,7 @@ weights "Egg"   Jumbo  = Just (ounce 30.0 / 12.0)
 weights _      _       = Nothing
 
 
-export Material String where
+export 
+Material String where
   density = Food.density
   weights = Food.weights

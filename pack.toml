@@ -1,0 +1,16 @@
+[custom.all.ampii]
+type = "local"
+path = "."
+ipkg = "ampii.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.ampii-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
+
+[custom.all.hashmap]
+type   = "github"
+url    = "https://github.com/Z-snails/idris2-hashmap"
+commit = "latest:main"
+ipkg   = "hashmap.ipkg"

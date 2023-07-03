@@ -20,55 +20,70 @@
 ||| Generates a shopping list from a list of recipes.
 module Shopping
 
-import Data.AVL.Dict
+import Data.HashMap
 import Recipes
-import Measures
+
+-- XXX: fix issues with Quantity signature
+-- import Measures
 import Food
 
 
+%default total
+
+
+-- XXX: dummy definition
+data Quantity : Type where
+
+
+
 ||| A helper function for foldIngredients
-total
 foldQuantity
-  :  Dict String Quantity
+  :  HashMap String Quantity
   -> Ingredient
-  -> Dict String Quantity
+  -> HashMap String Quantity
+{-
 foldQuantity accum (I food amount) = case lookup food accum of
   Nothing => insert food amount                 accum
   Just a  => insert food (addQuantity a amount) accum
+-}
 
 ||| Fold a list of ingredients into mapping from Name -> Quantity
-total
-foldIngredients : List Ingredient -> Dict String Quantity -> Dict String Quantity
+foldIngredients : List Ingredient -> HashMap String Quantity -> HashMap String Quantity
+{-
 foldIngredients []        ret = ret
 foldIngredients (x :: xs) ret = (foldQuantity (foldIngredients xs ret) x)
+-}
 
 ||| Fold a list of recipes into a mapping from Name -> Quantity
-total
-foldRecipes : List String -> Dict String Quantity
-foldRecipes        [] = Dict.empty
+foldRecipes : List String -> HashMap String Quantity
+{-
+foldRecipes        [] = HashMap.empty
 foldRecipes (r :: rs) = foldIngredients (ingredients (recipes r)) (foldRecipes rs)
+-}
 
 ||| Recursive helper for groupBySource
-total
 groupBySourceRec
   :  List (String, Quantity)
-  -> Dict String (List (String, Quantity))
-  -> Dict String (List (String, Quantity))
+  -> HashMap String (List (String, Quantity))
+  -> HashMap String (List (String, Quantity))
+{-
 groupBySourceRec []        accum = accum
-groupBySourceRec (x :: xs) accum = let
-  (name, _) = x
-  src  = source name
-  rest = groupBySourceRec xs accum
-in case (Dict.lookup src rest) of
-  Nothing => insert src [x]      rest
-  Just s  => insert src (x :: s) rest
+groupBySourceRec (x :: xs) accum = 
+  let
+    (name, _) = x
+    src  = source name
+    rest = groupBySourceRec xs accum
+  in case (HashMap.lookup src rest) of
+    Nothing => insert src [x]      rest
+    Just s  => insert src (x :: s) rest
+-}
 
 ||| Group ingredients by preferred source
-export total
-groupBySource : Dict String Quantity -> List (String, (List (String, Quantity)))
-groupBySource rs = toList (groupBySourceRec (toList rs) Dict.empty)
+export
+groupBySource : HashMap String Quantity -> List (String, (List (String, Quantity)))
+groupBySource rs = toList (groupBySourceRec (toList rs) HashMap.empty)
 
 ||| Return a shopping list for the given list of recipes
-export total
+export
 shoppingList : List String -> List (String, List (String, Quantity))
 shoppingList rs = groupBySource (foldRecipes rs)
