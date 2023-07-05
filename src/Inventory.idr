@@ -1,21 +1,23 @@
 module Inventory
 
 import Data.Vect
-import Language.JSON
 import Data.HashMap
-
+import JSON.Derive
 import Measures
 import Food
 
 
 %default total
+%language ElabReflection
 
 
 data Message
-  = KeyPress String
+  = Key String
   | ScaleReady
   | Weight Double String
   | Quit
+
+%runElab derive "Message" [Show,Eq,ToJSON,FromJSON]
   
 data Barcode 
   = EAN13 (Vect 13 Char)
@@ -43,21 +45,6 @@ Show State where
   
 empty : State
 empty = MkState Nothing Nothing empty
-
-
-  
-decode : Maybe JSON -> Maybe Message
-decode Nothing    = Nothing
-decode (Just msg) = do
-  case msg of
-    JObject [("type",   JString "quit")]              => Just $ Quit
-    JObject [("type",   JString "key"), 
-             ("chars",  JString char)]                => Just $ KeyPress char
-    JObject [("type",   JString "scale_ready")]       => Just $ ScaleReady
-    JObject [("type",   JString "weight"), 
-             ("weight", JNumber w),
-             ("unit",   JString unit)]                => Just $ Weight w unit
-    _                                                 => Nothing
     
 
 onKey : State -> String -> State
@@ -77,11 +64,11 @@ onWeight state w "lb" = {curWeight := Just (Lb,   w)} state
 onWeight state _ _    = state
 
 
-eval : State -> Message -> State
-eval state (KeyPress c) = onKey    state c
-eval state ScaleReady   = onReady  state
-eval state (Weight w u) = onWeight state w u
-eval state Quit         = ?unreachable
+eval : State -> Message -> Maybe State
+eval state (Key c)      = Just $ onKey    state c
+eval state ScaleReady   = Just $ onReady  state
+eval state (Weight w u) = Just $ onWeight state w u
+eval state Quit         = Nothing
 
 
 covering export
@@ -90,10 +77,12 @@ run state = do
   putStrLn (show state)
   line <- getLine
   putStrLn $ "got line: " ++ (show line)
-  case decode (parse line) of
-    Nothing   => putStrLn "Invalid message"
-    Just Quit => putStrLn "Exiting..."
-    Just msg  => run (eval state msg)
+  --Right msg <- decode line | Left err => ?hole
+  case decode {a = Message} line of
+    (Left  err) => putStrLn $ "Invalid Message: " ++ line
+    (Right msg) => case eval state msg of
+      Nothing    => putStrLn "Exiting..."
+      Just state => run state
 
 
 covering export
