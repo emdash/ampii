@@ -18,21 +18,20 @@
 
 module Main
 
-import Shopping
-import Measures
-import Food
+
+import System
+import Inventory
 
 
-||| A Test Meal Plan
-total
-sl : List String
-sl = [
-  "Mapo Tofu",
-  "Toaster Pizza",
-  "Creole Shrimp Etouffee"
-]
+dispatch : String -> List String -> IO ()
+dispatch "inventory" rest = Inventory.main rest
+dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
 
 main : IO ()
-main = do 
-  putStr "Hello, world!"
+main = do
+  args  <- getArgs
+  case args of 
+    []              => putStrLn "Impossible"
+    [_]             => putStrLn "No subcommand"
+    _ :: sc :: rest => dispatch sc rest

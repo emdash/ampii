@@ -57,6 +57,11 @@
 module Measures
 
 
+import Language.Reflection.Util
+import Derive.Prelude
+
+
+%language ElabReflection
 %default total
 
 
@@ -88,6 +93,8 @@ data Weight
   | Lb
   | Gram 
 
+%runElab derive "Weight" [Show,Eq]
+
 ||| Units of volume
 public export 
 data Volume
@@ -101,6 +108,7 @@ data Volume
   | ML
   | L
 
+%runElab derive "Volume" [Show,Eq]
 
 ||| A dimensioned quantity, as it would appear in a recipe.
 public export

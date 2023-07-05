@@ -16,6 +16,9 @@ authors = "brandon"
 depends = contrib
 	, indexed
 	, hashmap
+	, json
+	, elab-util
+	, sop
 
 -- modules to install
 modules = Food
@@ -31,7 +34,7 @@ modules = Food
 main = Main
 
 -- name of executable
-executable = "irpn.js"
+executable = "ampii"
 
 sourcedir = "src"
 -- builddir =

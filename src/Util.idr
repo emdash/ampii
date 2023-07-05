@@ -1,6 +1,7 @@
 module Util
 
 import Data.HashMap
+import Language.JSON
 
 
 %default total

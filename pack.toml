@@ -14,3 +14,15 @@ type   = "github"
 url    = "https://github.com/Z-snails/idris2-hashmap"
 commit = "latest:main"
 ipkg   = "hashmap.ipkg"
+
+[custom.all.json]
+type   = "github"
+url    = "https://github.com/stefan-hoeck/idris2-json"
+commit = "latest:main"
+ipkg   = "json.ipkg"
+
+[custom.all.elab-util]
+type   = "github"
+url    = "https://github.com/stefan-hoeck/idris2-elab-util"
+commit = "latest:main"
+ipkg   = "elab-util.ipkg"
