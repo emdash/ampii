@@ -57,8 +57,8 @@
 module Measures
 
 
-import Language.Reflection.Util
 import Derive.Prelude
+import JSON.Derive
 
 
 %language ElabReflection
@@ -77,6 +77,7 @@ data Error
 ||| Sizes of whole ingredients
 public export 
 data Size = Small | Med | Large | XLarge | Jumbo
+%runElab derive "Size" [Show,Eq,Ord,FromJSON,ToJSON]
 
 ||| How to convert between volume or size + count, and mass.
 public export 
@@ -92,8 +93,7 @@ data Weight
   = Oz
   | Lb
   | Gram 
-
-%runElab derive "Weight" [Show,Eq]
+%runElab derive "Weight" [Show,Eq,Ord,FromJSON,ToJSON]
 
 ||| Units of volume
 public export 
@@ -107,8 +107,7 @@ data Volume
   | Tsp
   | ML
   | L
-
-%runElab derive "Volume" [Show,Eq]
+%runElab derive "Volume" [Show,Eq,Ord,FromJSON,ToJSON]
 
 ||| A dimensioned quantity, as it would appear in a recipe.
 public export

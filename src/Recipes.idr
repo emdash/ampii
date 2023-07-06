@@ -77,6 +77,7 @@ Ord Recipe where
   compare x y = compare (name x) (name y)
 
 
+
 ||| A hard-coded, static recipe database.
 |||
 ||| Each Recipe is identified by a short string key.
