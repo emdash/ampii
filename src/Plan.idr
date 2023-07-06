@@ -21,7 +21,7 @@ module Plan
 
 
 import Data.Nat
-import Data.HashMap
+import Data.SortedMap
 import Recipes
 import Util
 
@@ -152,7 +152,7 @@ Ord Nutrient where
 ||| Represents user-specified nutritional goals
 export
 Nutrition : Type
-Nutrition = HashMap Nutrient Double
+Nutrition = SortedMap Nutrient Double
 
 
 ||| A type for planning what to eat and when.
@@ -162,9 +162,9 @@ record MealPlan where
   ||| A mapping of per-day nutrition targets for planning purposes.
   dailyGoals  : Nutrition
   ||| The set of recipes mapped number of servings it yields.
-  portions    : HashMap String Nat
+  portions    : SortedMap String Nat
   ||| Maps from meal slots slots to assigned portions
-  menu : HashMap MealSlot (HashMap String Nat)
+  menu : SortedMap MealSlot (SortedMap String Nat)
 
 
 ||| A new, empty meal plan

@@ -20,7 +20,7 @@
 ||| Generates a shopping list from a list of recipes.
 module Shopping
 
-import Data.HashMap
+import Data.SortedMap
 import Recipes
 
 -- XXX: fix issues with Quantity signature
@@ -38,9 +38,9 @@ data Quantity : Type where
 
 ||| A helper function for foldIngredients
 foldQuantity
-  :  HashMap String Quantity
+  :  SortedMap String Quantity
   -> Ingredient
-  -> HashMap String Quantity
+  -> SortedMap String Quantity
 {-
 foldQuantity accum (I food amount) = case lookup food accum of
   Nothing => insert food amount                 accum
@@ -48,24 +48,24 @@ foldQuantity accum (I food amount) = case lookup food accum of
 -}
 
 ||| Fold a list of ingredients into mapping from Name -> Quantity
-foldIngredients : List Ingredient -> HashMap String Quantity -> HashMap String Quantity
+foldIngredients : List Ingredient -> SortedMap String Quantity -> SortedMap String Quantity
 {-
 foldIngredients []        ret = ret
 foldIngredients (x :: xs) ret = (foldQuantity (foldIngredients xs ret) x)
 -}
 
 ||| Fold a list of recipes into a mapping from Name -> Quantity
-foldRecipes : List String -> HashMap String Quantity
+foldRecipes : List String -> SortedMap String Quantity
 {-
-foldRecipes        [] = HashMap.empty
+foldRecipes        [] = SortedMap.empty
 foldRecipes (r :: rs) = foldIngredients (ingredients (recipes r)) (foldRecipes rs)
 -}
 
 ||| Recursive helper for groupBySource
 groupBySourceRec
   :  List (String, Quantity)
-  -> HashMap String (List (String, Quantity))
-  -> HashMap String (List (String, Quantity))
+  -> SortedMap String (List (String, Quantity))
+  -> SortedMap String (List (String, Quantity))
 {-
 groupBySourceRec []        accum = accum
 groupBySourceRec (x :: xs) accum = 
@@ -73,15 +73,15 @@ groupBySourceRec (x :: xs) accum =
     (name, _) = x
     src  = source name
     rest = groupBySourceRec xs accum
-  in case (HashMap.lookup src rest) of
+  in case (SortedMap.lookup src rest) of
     Nothing => insert src [x]      rest
     Just s  => insert src (x :: s) rest
 -}
 
 ||| Group ingredients by preferred source
 export
-groupBySource : HashMap String Quantity -> List (String, (List (String, Quantity)))
-groupBySource rs = toList (groupBySourceRec (toList rs) HashMap.empty)
+groupBySource : SortedMap String Quantity -> List (String, (List (String, Quantity)))
+groupBySource rs = toList (groupBySourceRec (toList rs) SortedMap.empty)
 
 ||| Return a shopping list for the given list of recipes
 export

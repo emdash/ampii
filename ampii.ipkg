@@ -15,7 +15,6 @@ authors = "brandon"
 -- packages to add to search path
 depends = contrib
 	, indexed
-	, hashmap
 	, json
 	, elab-util
 	, sop
@@ -28,6 +27,7 @@ modules = Food
 	, Recipes
 	, Shopping
 	, Util
+	, Inventory
 
 
 -- main file (i.e. file to load at REPL)

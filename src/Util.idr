@@ -1,6 +1,6 @@
 module Util
 
-import Data.HashMap
+import Data.SortedMap
 import Language.JSON
 
 
@@ -16,17 +16,23 @@ import Language.JSON
 ||| XXX: move me to a utils library.
 ||| XXX: Potentially contribute this upstream to the containers library.
 export
-transpose : Eq a => Eq b => Hashable a => Hashable b => HashMap a b -> HashMap b (List a)
+transpose
+  :  Eq a
+  => Eq b
+  => Ord a
+  => Ord b
+  => SortedMap a b
+  -> SortedMap b (List a)
 transpose dict =
   -- XXX: I spent way too much time trying to do this without creating
   -- an intermediate list. How to avoid this?
-  let swapped = map swap (HashMap.toList dict)
+  let swapped = map swap (SortedMap.toList dict)
   in foldl foldIn empty swapped
 where
-  foldIn : HashMap b (List a) -> (b, a) -> HashMap b (List a)
+  foldIn : SortedMap b (List a) -> (b, a) -> SortedMap b (List a)
   foldIn accum (k, v) = case lookup k accum of
-    Nothing => HashMap.insert k [v]       accum
-    Just vs => HashMap.insert k (v :: vs) accum
+    Nothing => SortedMap.insert k [v]       accum
+    Just vs => SortedMap.insert k (v :: vs) accum
 
 
 ||| XXX: should be library function
@@ -50,7 +56,7 @@ fromMaybe err (Just whatever) = Right whatever
 
 ||| XXX: should be a library function
 export
-foldDict : Eq a => Ord a => a  -> Nat -> HashMap a Nat -> HashMap a Nat
-foldDict k v accum = case HashMap.lookup k accum of
+foldDict : Eq a => Ord a => a  -> Nat -> SortedMap a Nat -> SortedMap a Nat
+foldDict k v accum = case SortedMap.lookup k accum of
   Nothing => insert k v       accum
   Just x  => insert k (v + x) accum

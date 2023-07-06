@@ -2,7 +2,7 @@ module Inventory
 
 import Data.List1
 import Data.Vect
-import Data.HashMap
+import Data.SortedMap
 import JSON.Derive
 import Data.String
 
@@ -38,7 +38,7 @@ record State where
   constructor MkState
   curBarcode: Maybe String
   curWeight:  Maybe (Weight, Double)
-  items:      HashMap Barcode Item
+  items:      SortedMap Barcode Item
 
 ||| Print a human-readable representation of the current state.
 Show State where
