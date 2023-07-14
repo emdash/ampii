@@ -15,15 +15,20 @@ export
 data Barcode
   = EAN13 (Vect 13 Char)
   | UPC   (Vect 11 Char)
-%runElab derive "Barcode" [Show,Eq,Ord]
+%runElab derive "Barcode" [Eq,Ord]
+
+export
+Show Barcode where
+  show (EAN13 bc) = "EAN13:" ++ pack (toList bc)
+  show (UPC   bc) = "UPC:" ++ pack (toList bc)
 
 ||| Barcodes are serialized as a string with the standard prefixed.
 |||
 ||| This should correspond to whatever zbar uses.
 export
 ToJSON Barcode where
-  toJSON (EAN13 bc) = string $ "EAN13:" ++ pack (toList bc)
-  toJSON (UPC bc)   = string $ "UPC:"   ++ pack (toList bc)
+  toJSON bc = string $ show bc
+
 
 -- thanks to Stephen Hoek again, for explaining how to write this. I
 -- struggled to figure it out on my own.
@@ -52,3 +57,11 @@ parseBarcode s = case forget $ split (':' ==) s of
 export
 FromJSON Barcode where
   fromJSON = withString "Barcode" parseBarcode
+
+||| Construct a barcode from an unprefixed string
+export
+fromDigits : String -> Maybe Barcode
+fromDigits s = case length s of
+  11 => map UPC   $ toVect 11 $ unpack s
+  13 => map EAN13 $ toVect 13 $ unpack s
+  _  => Nothing
