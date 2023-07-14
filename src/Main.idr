@@ -21,10 +21,12 @@ module Main
 
 import System
 import Inventory
+import USBScale
 
 
 dispatch : String -> List String -> IO ()
 dispatch "inventory" rest = Inventory.main rest
+dispatch "scale"     rest = USBScale.main rest
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
 
