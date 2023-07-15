@@ -10,11 +10,13 @@ import JSON.Derive
 import Data.String
 import System.File
 import System.Directory
+import System.Concurrency
 
 
 import Barcode
 import Food
 import Measures
+import USBScale
 
 
 %default total
@@ -25,7 +27,8 @@ import Measures
 data Command
   = Scan  Barcode
   | Name  String
-  | Weigh Weight Double
+  | Weigh (Weight, Double)
+  | NetWt (Weight, Double)
   | Quit
 %runElab derive "Command" [Show,Eq,ToJSON,FromJSON]
 
@@ -99,6 +102,12 @@ setWeight w (Updating item)         = Right $ Updating $ {last_wt := Just w} ite
 setWeight w (Creating bc name _)    = Right $ helper bc name $ Just w
 setWeight _ _                       = Left "No Barcode"
 
+||| Update the net weight of the current item.
+setNetWt : (Weight, Double) -> State -> Either String State
+setNetWt w (Updating item)         = Right $ Updating $ {net_wt := Just w} item
+setNetWt w (Creating bc name _)    = Left "Weigh Item First"
+setNetWt _ _                       = Left "No Barcode"
+
 
 ||| Manages a subdirectory with a food item per barcode
 |||
@@ -146,6 +155,12 @@ weigh w inv = case setWeight w inv.state of
   Left err => inv
   Right state => { state := state } inv
 
+||| Apply the given net weight to the current item, if possible
+netwt : (Weight, Double) -> Inventory -> Inventory
+netwt w inv = case setNetWt w inv.state of
+  Left err => inv
+  Right state => { state := state } inv
+
 ||| Apply the given name to the current item, if possible
 name : String -> Inventory -> Inventory
 name n inv = case setName n inv.state of
@@ -158,35 +173,87 @@ eval : Inventory -> Command -> IO (Maybe Inventory)
 eval inv (Scan bc) = do
   inv <- scan bc inv
   pure $ Just inv
-eval inv (Name n)    = pure $ Just $ name n inv
-eval inv (Weigh u w) = pure $ Just $ weigh (u, w) inv
-eval inv Quit        = pure Nothing
+eval inv (Name n)  = pure $ Just $ name n inv
+eval inv (Weigh w) = pure $ Just $ weigh w inv
+eval inv (NetWt w) = pure $ Just $ netwt w inv
+eval inv Quit      = case inv.state of
+  Updating item => do
+    save inv.path item
+    pure Nothing
+  _ => pure Nothing
+
+parseNetWeight : String -> Maybe (Weight, Double)
+parseNetWeight str =
+  let
+    (decimal, tail) := break (\x => not (isDigit x || x == '.')) str
+  in case tail of
+    "oz" => Just (Ounce,     cast decimal)
+    "g"  => Just (Gram,      cast decimal)
+    "lb" => Just (Pound,     cast decimal)
+    "kg" => Just (KiloGram,  cast decimal)
+    "mg" => Just (MilliGram, cast decimal)
+    _    => Nothing
+
+
+||| Parse a line of text into a command
+partial
+parseCommand : String -> Maybe Command
+parseCommand ""  = Just Quit
+parseCommand str = case strIndex str 0 of
+  '*' => map Scan  $ fromDigits  $ strTail str
+  '/' => map NetWt $ parseNetWeight $ strTail str
+  '$' => Just $ Name $ strTail str
+  _   => Nothing
+
 
 
 {- Entry Point ---------------------------------------------------------------}
 
 
-||| Process messages from stdin and fold into the state.
 covering export
-run : Inventory -> IO ()
-run inv = do
-  putStrLn (show inv)
+run : Channel Command -> Inventory -> IO ()
+run chan inv = do
+  putStrLn $ show inv
+  cmd <- channelGet chan
+  putStrLn $ show cmd
+  case !(eval inv cmd) of
+    Nothing => pure ()
+    Just inv => run chan inv
+
+||| Read and decode command strings from stdin
+partial
+readStdin : Channel Command -> IO ()
+readStdin chan = do
   line <- getLine
-  putStrLn $ "got line: " ++ (show line)
-  case decode {a = Command} line of
-    (Left  err) => do
+  putStrLn $ show line
+  case parseCommand line of
+    Nothing => do
       putStrLn $ "Invalid Command: " ++ line
-      run inv
-    (Right msg) => case !(eval inv msg) of
-      Nothing => pure ()
-      Just inv => run inv
+      readStdin chan
+    Just cmd => do
+      channelPut chan cmd
+      readStdin chan
+
+||| Inject scale events into the command queue as appropriate
+inject_weight : Channel Command -> USBScale.Result -> IO ()
+inject_weight _ Empty = pure ()
+inject_weight _ Weighing = pure ()
+inject_weight _ (Fault str) = pure ()
+inject_weight c (Ok w) = channelPut c $ Weigh w
 
 ||| Entry point for the `inventory` subcommand.
-covering export
+partial export
 main : List String -> IO ()
-main (path :: rest) = do
-  Right inv <- openInventory path
-            | Left err => putStrLn err
-  run inv
+main [inv_path, scale_path] = do
+  chan      <- makeChannel
+  Right inv <- openInventory inv_path | Left err => putStrLn err
+  _         <- USBScale.spawn scale_path (inject_weight chan)
+  _         <- fork (run chan inv)
+  readStdin chan
+{- main [inv_path] = do
+  chan      <- makeChannel
+  Right inv <- openInventory inv_path | Left err => putStrLn err
+  _         <- fork (run chan inv)
+  readStdin chan -}
 main _ = do
   putStrLn "No path given"
