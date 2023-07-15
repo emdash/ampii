@@ -66,7 +66,7 @@ import JSON.Derive
 
 
 ||| The ways in which normalization can fail
-public export 
+public export
 data Error
   = UndefinedQuantity
   | UndefinedDensity
@@ -75,12 +75,12 @@ data Error
   | Union Error Error
 
 ||| Sizes of whole ingredients
-public export 
+public export
 data Size = Small | Med | Large | XLarge | Jumbo
 %runElab derive "Size" [Show,Eq,Ord,FromJSON,ToJSON]
 
 ||| How to convert between volume or size + count, and mass.
-public export 
+public export
 interface Eq m => Material m where
   density : m ->         Maybe Double
   weights : m -> Size -> Maybe Double
@@ -88,11 +88,21 @@ interface Eq m => Material m where
   eq a b = a == b
 
 ||| Units of weight
-public export 
+public export
 data Weight
-  = Oz
-  | Lb
-  | Gram 
+  = Ounce
+  | Pound
+  | Gram
+  | MilliGram
+  | KiloGram
+  | Cd
+  | Tael
+  | Grain
+  | Dwt
+  | Tonne
+  | Ton
+  | TroyOunce
+
 %runElab derive "Weight" [Show,Eq,Ord,FromJSON,ToJSON]
 
 ||| Units of volume
