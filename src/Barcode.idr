@@ -13,8 +13,8 @@ import JSON.Derive
 ||| Concrete type for all supported barcode formats.
 export
 data Barcode
-  = EAN13 (Vect 12 Char)
-  | UPC   (Vect 11 Char)
+  = EAN13 (Vect 13 Char)
+  | UPC   (Vect 12 Char)
 %runElab derive "Barcode" [Eq,Ord]
 
 export
@@ -62,6 +62,6 @@ FromJSON Barcode where
 export
 fromDigits : String -> Maybe Barcode
 fromDigits s = case length s of
-  11 => map UPC   $ toVect 11 $ unpack s
-  12 => map EAN13 $ toVect 12 $ unpack s
+  12 => map UPC   $ toVect 12 $ unpack s
+  13 => map EAN13 $ toVect 13 $ unpack s
   _  => Nothing
