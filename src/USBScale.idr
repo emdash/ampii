@@ -49,6 +49,7 @@ units 12 = Pound
 units _  = defaultUnit
 
 
+public export
 data Result
   = Empty
   | Weighing
@@ -58,15 +59,18 @@ data Result
 
 
 ||| Calculate the current weight from the raw binary values
-calcWeight : Int -> Int -> Int -> Double
-calcWeight msb lsb exponent =
+calcWeight : Int -> Int -> Int -> Int -> (Weight, Double)
+calcWeight unit msb lsb exponent =
   let
-    mantissa = (cast ((msb `shiftL` 8) .|. lsb)) / 10.0
-  in
-    case exponent of
-      0x00 => cast mantissa
-      0xff => cast mantissa
-      _    => pow (cast mantissa) (cast exponent)
+    mantissa = cast {to = Double} ((msb `shiftL` 8) .|. lsb)
+    unit = units unit
+    scaled = case unit of
+      Ounce => mantissa / 10.0
+      _     => mantissa
+  in case exponent of
+      0x00 => (unit, scaled)
+      0xff => (unit, scaled)
+      _    => (unit, pow scaled (cast exponent))
 
 
 ||| Decode the 6-byte HID packet into a scale value
@@ -77,7 +81,7 @@ decode [report, status, unit, exp, lsb, msb] =
       0x01 => Fault "Fault"
       0x02 => Empty
       0x03 => Weighing
-      0x04 => Ok (units unit, calcWeight msb lsb exp)
+      0x04 => Ok $ calcWeight unit msb lsb exp
       0x05 => Fault "Negative Weight"
       0x06 => Fault "Overweight"
       0x07 => Fault "Recalibrate"
