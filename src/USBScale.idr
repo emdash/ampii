@@ -1,4 +1,3 @@
-
 ||| Driver for talking to 510 Scale over USB.
 |||
 ||| The scale sends a 6-byte packet, which must be manually swizzled
@@ -14,45 +13,51 @@ import System.File
 
 import Derive.Prelude
 
+import Measures
+
 
 %language ElabReflection
 %default total
 
 
-units : Int -> String
-units 0  = "unknown"
-units 1  = "mg"
-units 2  = "g"
-units 3  = "kg"
-units 4  = "cd"
-units 5  = "taels"
-units 6  = "gr"
-units 7  = "dwt"
-units 8  = "tonnes"
-units 9  = "tons"
-units 10 = "ozt"
-units 11 = "oz"
-units 12 = "lbs"
-units _  = "unknown"
+||| Move to Utils lib
+debug : Show a => a -> IO ()
+debug value = do
+  _ <- fPutStrLn stderr (show value)
+  pure ()
 
 
-data Status
+||| Unit to use when we can't determine from the USB traffic
+defaultUnit : Weight ; defaultUnit = Gram
+
+
+||| Convert integer unit into type
+units : Int -> Weight
+units 0  = defaultUnit
+units 1  = MilliGram
+units 2  = Gram
+units 3  = KiloGram
+units 4  = Cd
+units 5  = Tael
+units 6  = Grain
+units 7  = Dwt
+units 8  = Tonne
+units 9  = Ton
+units 10 = TroyOunce
+units 11 = Ounce
+units 12 = Pound
+units _  = defaultUnit
+
+
+data Result
   = Empty
   | Weighing
-  | Ok String Double
-%runElab derive "Status" [Show,Eq]
-
-ScaleResult : Type
-ScaleResult = Either String Status
+  | Fault String
+  | Ok (Weight, Double)
+%runElab derive "Result" [Show,Eq]
 
 
-public export
-data Event
-  = Ready
-  | Weight String Double
-%runElab derive "Event" [Show,Eq]
-
-
+||| Calculate the current weight from the raw binary values
 calcWeight : Int -> Int -> Int -> Double
 calcWeight msb lsb exponent =
   let
@@ -64,63 +69,71 @@ calcWeight msb lsb exponent =
       _    => pow (cast mantissa) (cast exponent)
 
 
-data State
-  = WaitForWeight
-  | WaitForEmpty
-
-
-transition : State -> Status -> (State, Maybe Event)
-transition WaitForWeight (Ok u w) = (WaitForEmpty,  Just $ Weight u w)
-transition WaitForWeight _        = (WaitForWeight, Nothing)
-transition WaitForEmpty  Empty    = (WaitForWeight, Just Ready)
-transition WaitForEmpty  _        = (WaitForEmpty,  Nothing)
-
-
-decode : List Int -> ScaleResult
+||| Decode the 6-byte HID packet into a scale value
+decode : List Int -> Result
 decode [report, status, unit, exp, lsb, msb] =
   if report == 0x03
     then case status of
-      0x01 => Left    "Fault"
-      0x02 => Right   Empty
-      0x03 => Right   Weighing
-      0x04 => Right $ Ok (units unit) (calcWeight msb lsb exp)
-      0x05 => Left    "Negative Weight"
-      0x06 => Left    "Overweight"
-      0x07 => Left    "Recalibrate"
-      0x08 => Left    "Rezero"
-      _    => Left  $ "Unknown status code: " ++ show status
-    else Left "Error Reading Scale!"
-decode _ = Left "Error, invalid packet"
+      0x01 => Fault "Fault"
+      0x02 => Empty
+      0x03 => Weighing
+      0x04 => Ok (units unit, calcWeight msb lsb exp)
+      0x05 => Fault "Negative Weight"
+      0x06 => Fault "Overweight"
+      0x07 => Fault "Recalibrate"
+      0x08 => Fault "Rezero"
+      _    => Fault $ "Unknown status code: " ++ show status
+    else Fault "Error Reading Scale!"
+decode _ = Fault"Error, invalid packet"
 
 
-export partial
-run : State -> Buffer -> File -> IO (Either String ())
-run state buf file = do
-  bytes <- readBufferData file buf 0 6
-  case bytes of
-    Right 6 => do
-      d <- bufferData buf
-      case decode d of
-        Left err => pure $ Left err
-        Right res => do
-          let (state, event) = transition state res
-          case event of
-            Just event => putStrLn $ show event
-            Nothing => pure ()
-          run state buf file
-    other => pure $ Left "Error reading from buffer"
+||| Keep reading from the scale, placing the most recent readings into
+||| the channel.
+partial
+loop : (Result -> IO ()) -> Buffer -> File -> IO (Either String ())
+loop post buf file = do
+  _ <- readBufferData file buf 0 6
+  d <- bufferData buf
+  post (decode d)
+  loop post buf file
 
 
-export partial
-main : List String -> IO ()
-main (path :: rest) = do
+||| Entry point for the scale thread
+partial
+run : (Result -> IO ()) -> String -> IO ()
+run post path = do
   Just buf <- newBuffer 6
-           | Nothing => putStrLn "error, could not allocate buffer"
-  Right _ <- withFile path Read onError (run WaitForEmpty buf)
-          | Left err => putStrLn err
+    | Nothing => debug "error, could not allocate buffer"
+  Right _ <- withFile path Read onError (loop post buf)
+    | Left err => debug err
   pure ()
   where
     onError : FileError -> IO String
     onError err = pure $ show err
+
+
+||| Spawn the scale reading thread
+|||
+||| The function parameter should post the USBScale.result to the main
+||| event queue.
+export partial
+spawn : String -> (Result -> IO ()) -> IO ThreadID
+spawn path post = fork (run post path)
+
+
+||| Entry point for basic scale command.
+export partial
+main : List String -> IO ()
+main (path :: _) = do
+  chan <- makeChannel
+  _ <- spawn path (channelPut chan)
+  read chan
+  where
+    read : Channel Result -> IO ()
+    read chan = do
+      msg <- channelGet chan
+      putStrLn (show msg)
+      read chan
 main _ = do
-  putStrLn "No device file given"
+  debug "No device file given"
+  pure ()
