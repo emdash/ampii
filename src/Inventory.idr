@@ -14,6 +14,7 @@ import System.Concurrency
 
 
 import Barcode
+import Control.ANSI
 import Food
 import Measures
 import USBScale
@@ -25,12 +26,13 @@ import USBScale
 
 ||| These are the high-level operations on the inventory
 data Command
-  = Scan  Barcode
-  | Name  String
-  | Weigh (Weight, Double)
-  | NetWt (Weight, Double)
+  = Scan   Barcode
+  | Name   String
+  | NetWt  (Weight, Double)
+  | Scale  USBScale.Result
+  | Accept
   | Quit
-%runElab derive "Command" [Show,Eq,ToJSON,FromJSON]
+%runElab derive "Command" [Show,Eq]
 
 
 ||| A single item in the inventory
@@ -116,7 +118,24 @@ record Inventory where
   constructor MkInventory
   path: String
   state: State
-%runElab derive "Inventory" [Show]
+  scale: Maybe Result
+
+Show Inventory where
+  show (MkInventory path Ready           w) = "Ready: " ++ show w
+  show (MkInventory path (Err err)       w) = "Error: " ++ err ++ " " ++ show w
+  show (MkInventory path (Updating item) w) =
+    "Scale:          " ++ show w            ++ "\n" ++
+    "Updating:       " ++ item.name         ++ "\n" ++
+    "Barcode:        " ++ show item.barcode ++ "\n" ++
+    "Initial Weight: " ++ show item.init_wt ++ "\n" ++
+    "Net Weight:     " ++ show item.net_wt  ++ "\n" ++
+    "Cur Weight:     " ++ show item.last_wt ++ "\n"
+  show (MkInventory path (Creating barcode name init_wt) w) =
+    "Scale:          " ++ show w       ++ "\n" ++
+    "New Item:       " ++ show name    ++ "\n" ++
+    "Barcode:        " ++ show barcode ++ "\n" ++
+    "Initial Weight: " ++ show init_wt ++ "\n"
+
 
 ||| Create a new item in the inventory
 createItem : Barcode -> Inventory -> Inventory
@@ -128,7 +147,7 @@ openInventory path = do
   Right dir <- openDir path
              | Left _ => pure $ Left "Invalid Path"
   closeDir dir
-  pure $ Right $ MkInventory path Ready
+  pure $ Right $ MkInventory path Ready Nothing
 
 ||| Respond to receiving a barcode from the user
 |||
@@ -174,8 +193,14 @@ eval inv (Scan bc) = do
   inv <- scan bc inv
   pure $ Just inv
 eval inv (Name n)  = pure $ Just $ name n inv
-eval inv (Weigh w) = pure $ Just $ weigh w inv
 eval inv (NetWt w) = pure $ Just $ netwt w inv
+eval inv (Scale r) = pure $ Just $ { scale := Just r } inv
+eval inv Accept    = pure $ case inv.scale of
+  Nothing            => Just inv
+  (Just Empty)       => Just inv
+  (Just Weighing)    => Just inv
+  (Just (Fault str)) => Just inv
+  (Just (Ok w)) => Just $ weigh w inv
 eval inv Quit      = case inv.state of
   Updating item => do
     save inv.path item
@@ -198,7 +223,7 @@ parseNetWeight str =
 ||| Parse a line of text into a command
 partial
 parseCommand : String -> Maybe Command
-parseCommand ""  = Just Quit
+parseCommand ""  = Just Accept
 parseCommand str = case strIndex str 0 of
   '*' => map Scan  $ fromDigits  $ strTail str
   '/' => map NetWt $ parseNetWeight $ strTail str
@@ -213,7 +238,7 @@ parseCommand str = case strIndex str 0 of
 covering export
 run : Channel Command -> Inventory -> IO ()
 run chan inv = do
-  putStrLn $ show inv
+  putStrLn $ cursorMove 1 1 ++ eraseScreen All ++ show inv
   cmd <- channelGet chan
   putStrLn $ show cmd
   case !(eval inv cmd) of
@@ -234,20 +259,13 @@ readStdin chan = do
       channelPut chan cmd
       readStdin chan
 
-||| Inject scale events into the command queue as appropriate
-inject_weight : Channel Command -> USBScale.Result -> IO ()
-inject_weight _ Empty = pure ()
-inject_weight _ Weighing = pure ()
-inject_weight _ (Fault str) = pure ()
-inject_weight c (Ok w) = channelPut c $ Weigh w
-
 ||| Entry point for the `inventory` subcommand.
 partial export
 main : List String -> IO ()
 main [inv_path, scale_path] = do
   chan      <- makeChannel
   Right inv <- openInventory inv_path | Left err => putStrLn err
-  _         <- USBScale.spawn scale_path (inject_weight chan)
+  _         <- USBScale.spawn scale_path (channelPut chan . Scale)
   _         <- fork (run chan inv)
   readStdin chan
 {- main [inv_path] = do
