@@ -22,6 +22,8 @@ module Recipes
 
 
 import Measures
+import Food
+
 
 
 ||| All physical unit abbreviations in a flat enumeration
