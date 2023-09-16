@@ -8,32 +8,37 @@ See a problem? Have questions? Open an issue.
 
 # Overview
 
-AMPiI has one fundamental goal: to help you track every gram of food
-that goes into your mouth. Internally, AMPiI tracks food *by weight*.
+AMPiI has one ultimate goal: to help you track every gram of food
+that goes into your mouth.
 
-This isn't perfect; however -- and this is important to understand --
-perfection is *not* the goal. The goal is to help you do the best you
-can at any given time.
+However -- and this is important to understand -- perfection is *not*
+the goal. The goal is to help you do as best you can, at any given
+time.
+
+AMPiI can track as little or as much as you want, whether it's
+pre-packaged, whole, or hot from the kitchen.
+
+AMPiI doesn't judge. It just helps you manage the plans you make for
+yourself.
 
 Broadly speaking, your time with AMPiI will be spent in the following
 ways:
-- Set up your Inventory, a one-time task.
-- Import recipes, at any time.
-- Create a meal plan, from specific recipes: periodically.
-- Generate a Shopping List from a meal plan, periodically.
-- Update your Inventory, after a shopping trip: as needed.
-- Cook dish(es) from your meal plan, as needed.
-- Log what you've eaten, as needed.
-- Review your progress, at the end of a planning period.
+- Managing your inventory.
+- Adapting and refining recipes.
+- Create meal plans, at varying levels of detail.
+- Generateing shopping lists from a meal plan.
+- Assisting you in preparing recipes.
+- Recording what you've eaten, or plan to eat.
+- Periodically reviewing your activiy.
 
 AMPiI is especially oriented towards those who want to prepare food in
 advance, a.k.a. *meal prepping*. But it works just fine for those
 those meals you prepare just before eating.
 
-AMPiI tracks all the food you eat, whether it's pre-packaged, whole,
-or hot from the kitchen.
-
 # System Requirements
+
+The main thing AMPiI needs are: a keyboard, USB ports, and a screen. A
+Raspberry PI 400 is my target system.
 
 ## Getting Started
 
@@ -57,12 +62,10 @@ then configure AMPiI to recognize this pattern, which helps to ensure
 that scanning a barcode is not mistaken for other arbitrary
 keypresses.
 
-Better still: your a computer that can run Linux, or another
-open-source operating system, such as FreeBSD. This will allow you to
-add a USB scale, and save you from having to type in weights
-manually. Unlike barcode scanners, scales use USB at a lower level. At
-this time, I am only able to support for usb scales on systems that
-provide a `hidraw` device file interface.
+Better still: your computer can run Linux, or another open-source
+operating system, such as FreeBSD. This unlocks support for USB
+scales. Unlike barcode scanners, scales use USB at a lower level. At
+this time, I am only able to support for usb scales Linux systems.
 
 ## The End Goal: Your Kitchen Companion
 
@@ -71,31 +74,24 @@ spills and splatters are likely, so keep that in mind when choosing
 your system and its location. How you mitigate these hazards is also
 up to you. But you need easy access to both the scale, and the scanner.
 
-AMPiI embraces a bit of a social experiment: the return of the
-*kitchen computer*. I'm going to recommend that you eventually
-dedicate a computer to AMPiI, that lives in your kitchen.
+AMPiI embodies a social experiment: the return of the *kitchen
+computer*. I recommend that you dedicate a computer to AMPiI, and that
+lives in your kitchen.
 
 To this computer, you attach can your kitchen peripherals:
 - your digital scale,
-- your barcode scanner,
-- your camera,
-- your barcode label printer.
-
-You're going to need to frequently interacting with AMPiI while in the
-kitchen, and this makes little sense if your computer is located in
-another room.
+- your barcode scanner.
 
 How you go about this is up to you. Just remember that AMPiI's
-performance requirements are modest. The main thing it needs is a
-keyboard, USB ports, and a screen. A Raspberry PI 400 would be
-ideal. So long as it can run Linux. Place the screen and input devices
-wherever works for you. Add a keyboard cover to protect from spills,
-or use a waterproof membrane keybord. Have fun with it. Make it an
-expression of who you are.
+*performance* requirements are modest. So long as it can run Linux.
+
+Place the screen and input devices wherever works for you. Add a
+keyboard cover to protect from spills, or use a waterproof membrane
+keybord. Have fun with it. Make it an expression of who you are.
 
 This computer does not need to be connected to the internet! AMPiI can
 work entirely offline. However, if you do have internet access, it
-allows the following:
+allows for the following:
 
 - Most important: keeping your computer's clock set correctly. If you
   choose to run an offline machine, *make sure your clock is set
@@ -113,8 +109,8 @@ In nutrition, *nutrient density* is the amount of some nutrient for
 some quantity of food. It's a simple ratio of mass to mass, often
 expressed in units like "grams per 100 grams".
 
-AMPiI normalizes all these quantities for foodstuffs, so that totals
-can be calculated for any portion of a given food.
+AMPiI normalizes all these quantities based on the information
+provided from nutrition labels.
 
 # Inventory
 
@@ -124,54 +120,65 @@ containers of a given food.
 
 Your first task after installation will be to take some
 inventory. This is, admittedly, a bit painful. But well worth
-doing. You don't have to do it all at once, but the more complete your
+doing.
+
+You don't have to do it all at once, but the more complete your
 inventory is, the better AMPiI will be at tracking everything else
 that matters to you.
 
 The key thing to understand is that AMPiI tracks individual
 *containers* of food. If you have 10 cans of the same lot of baked
-beans, then that corresponds to 10 inventory items. Each container has
-a globally unique ID, regardless of the food it contains.
+beans, then that corresponds to 10 containers in your inventory, each
+with its own ID.
 
 ## Adding Inventory Items
 
-In the beginning, you'll do this for everything you already have in
-your pantry. You can do it all at once, or gradually. It's up to you.
+Identify the food:
 
-- identify the food:
-  - by searching the food database, or
-  - by scanning a product UPC, or
-  - by creating a new food item.
-- update nutritional facts:
-  - make sure the values reflect what's on the package, even if it's
+- by searching the food database, or
+- by scanning a product UPC, or
+- by creating a new food item.
+
+Update nutritional facts:
+- make sure the values reflect what's on the package, even if it's
 	one that you've seen before.
-	- you can tweak nutrition facts for different *lots* of the product.
-- assign a container id:
-  - by entering manually, or
-  - by scanning a unique barcode, or
-  - by generating a new container id.
-	- be sure to record this on the container.
-- weigh the container:
-  - by entering the total weight of a *sealed* container, or
-  - by updating the total weight of a reusable container.
-- enter the net weight or volume:
-  - using the last recorded value (the default), or
-  - by entering the digits manually.
-- enter the expiration, use-by, or best-by date:
-  - directly, or
-  - calcuated from shelf-life and the a given date (defaulting to the
-    current date).
-- assign a photo.
-  - by searching the database, or
-  - by taking a new photo, or
-  - by choosing a specific photo file or URL.
+  - you can tweak nutrition facts for different *lots* of the product.
+
+Assign a container id:
+
+- by entering manually, or
+- by scanning a unique barcode, or
+- by generating a new container id.
+  - be sure to record this on the container.
+
+Weigh the container:
+
+- by entering the total weight of a *sealed* container, or
+- by updating the total weight of a reusable container.
+
+Enter the net weight or volume:
+
+- using the last recorded value (the default), or
+- by entering the digits manually.
+
+Enter the expiration, use-by, or best-by date:
+
+- directly, or
+- calcuated from shelf-life and the a given date (defaulting to the
+  current date).
+
+assign a photo:
+
+- by searching the database, or
+- by taking a new photo, or
+- by choosing a specific photo file or URL.
 
 ## Consumption
 
 As you eat and prepare food, AMPiI will track the consumption.
 
-You can also manually edit the status of any container in your
-inventory, should the need arise.
+You can also manually edit any container in your inventory, should the
+need arise.
 
 ## Retiring Container IDs
 
@@ -179,6 +186,7 @@ Container IDs must be unique, but AMPiI *retires* a container ID after the
 associated container has been consumed.
 
 This allows you to re-use a fixed set of:
+
 - pre-printed barcodes,
 - barcoded or numbered containers,
 - re-usable barcode tags.
