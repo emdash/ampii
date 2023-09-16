@@ -1,3 +1,11 @@
+# A Disclaimer
+
+AMPiI is vaporware at present. What follows is essentially a design
+document. When reading the following, imagine that AMPiI already
+exists.
+
+See a problem? Have questions? Open an issue.
+
 # Overview
 
 AMPiI has one fundamental goal: to help you track every gram of food
