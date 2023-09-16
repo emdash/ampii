@@ -175,7 +175,7 @@ inventory, should the need arise.
 
 ## Retiring Container IDs
 
-Container IDs must be unique, but *retires* the container ID after the
+Container IDs must be unique, but AMPiI *retires* a container ID after the
 associated container has been consumed.
 
 This allows you to re-use a fixed set of:
@@ -186,10 +186,8 @@ This allows you to re-use a fixed set of:
 It's up to you if you want to take advantage of this feature.
 
 The key thing is that, at any given time, no two containers can have
-the same ID. Once a container is consumes, its ID is released for
-future use.
-
-## Maintenance
+the same ID. Once a container is consumed, its ID is released for
+future re-use.
 
 # Recipes
 
