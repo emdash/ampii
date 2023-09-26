@@ -15,16 +15,16 @@ export
 data Barcode
   = EAN13 (Vect 13 Char)
   | UPC   (Vect 12 Char)
+  | USER  (Vect 4  Char)
 %runElab derive "Barcode" [Eq,Ord]
 
 export
 Show Barcode where
   show (EAN13 bc) = "EAN13:" ++ pack (toList bc)
   show (UPC   bc) = "UPC:" ++ pack (toList bc)
+  show (USER  bc) = "USER:" ++ pack (toList bc)
 
 ||| Barcodes are serialized as a string with the standard prefixed.
-|||
-||| This should correspond to whatever zbar uses.
 export
 ToJSON Barcode where
   toJSON bc = string $ show bc
@@ -49,8 +49,9 @@ parseVect s = case toVect k (unpack s) of
 ||| length.
 parseBarcode : Parser String Barcode
 parseBarcode s = case forget $ split (':' ==) s of
-  ["EAN13",r] => EAN13 <$> parseVect r
-  ["UPC",r]   => UPC   <$> parseVect r
+  ["EAN13", r] => EAN13 <$> parseVect r
+  ["UPC", r]   => UPC   <$> parseVect r
+  ["USER", r]  => USER  <$> parseVect r
   _           => fail "Invalid barcode: \{s}"
 
 ||| Implement JSON Deserialization
@@ -62,6 +63,7 @@ FromJSON Barcode where
 export
 fromDigits : String -> Maybe Barcode
 fromDigits s = case length s of
+  4  => map USER  $ toVect  4 $ unpack s
   12 => map UPC   $ toVect 12 $ unpack s
   13 => map EAN13 $ toVect 13 $ unpack s
   _  => Nothing
