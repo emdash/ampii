@@ -18,9 +18,11 @@ depends = contrib
 	, json
 	, elab-util
 	, sop
+	, refined
 
 -- modules to install
-modules = Food
+modules = Date
+	, Food
 	, Main
         , Measures
 	, Plan

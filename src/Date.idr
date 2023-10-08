@@ -19,89 +19,113 @@ module Date
 
 
 import Data.Fin
-imoprt Data.Integer
 import Data.Nat
+import Data.Refined.Integer
+import Data.Refined.Bits8
+import Data.Refined.Bits16
 import Derive.Prelude
+import Derive.Refined
 import JSON.Derive
+import Language.Reflection.Util
 import System.Clock
 
 
 %default total
 %language ElabReflection
 
+
 ||| Returns true if the given year is a leap year.
 export
-isLeapYear : (n: Nat) -> Bool
-isLeapYear year =
+IsLeapYear : (n: Nat) -> Bool
+IsLeapYear year =
   let
     mod4   := (modNatNZ year 4   SIsNonZero) == 0
     mod100 := (modNatNZ year 100 SIsNonZero) == 0
     mod400 := (modNatNZ year 400 SIsNonZero) == 0
   in
-    (mod4) && (not (mod100) || mod400)
+    mod4 && ((not mod100) || mod400)
 
-||| Returns the number of days of the given zero-indexed month.
+
+||| A month is an 8-bit unsigned integer between 1 and 12, inclusive.
+public export
+record Month where
+  constructor M
+  value : Bits8
+  {auto 0 valid : FromTo 1 12 value}
+
+namespace Month
+  %runElab derive "Month" [Show, Eq, Ord, RefinedInteger]
+
+||| Returns the number of days of the given 1-indexed month
 export
-daysOfMonth : Nat -> Fin 12 -> Nat
-daysOfMonth y m = case isLeapYear y of
-  True  => leap m
-  False => nonLeap m
-  where
-    nonLeap : Fin 12 -> Nat
-    nonLeap 0 = 31
-    nonLeap 1 = 28
-    nonLeap 2 = 31
-    nonLeap 3 = 30
-    nonLeap 4 = 31
-    nonLeap 5 = 30
-    nonLeap 6 = 31
-    nonLeap 7 = 31
-    nonLeap 8 = 30
-    nonLeap 9 = 31
-    nonLeap 10 = 30
-    nonLeap 11 = 31
+DaysOfMonth : Bool -> Month -> Bits8
+DaysOfMonth True  (M 2)  = 29
+DaysOfMonth False (M 2)  = 28
+DaysOfMonth _     (M 4 ) = 30
+DaysOfMonth _     (M 6 ) = 30
+DaysOfMonth _     (M 9 ) = 30
+DaysOfMonth _     (M 11) = 30
+DaysOfMonth _     _      = 31
 
-    leap : Fin 12 -> Nat
-    leap m = case m of
-      1 => 29
-      x => nonLeap x
+||| Represents valid day of month
+public export
+record Day (leap : Bool) (m : Month) where
+  constructor D
+  day : Bits8
+  {auto 0 valid : FromTo 1 (DaysOfMonth leap m) day}
+
+%runElab deriveIndexed "Day" [Show,Eq,Ord,ToJSON]
+
+namespace Day
+  public export
+  refineDay
+    :  {b : Bool}
+    -> {m : Month}
+    -> Bits8
+    -> Maybe (Day b m)
+  refineDay v = case hdec0 {p = FromTo 1 (DaysOfMonth b m)} v of
+    Just0 _  => Just (D v)
+    Nothing0 => Nothing
+
+  public export
+  fromInteger
+    :  {b : Bool}
+    -> {m : Month}
+    -> (n : Integer)
+    -> {auto 0 p : IsJust (refineDay {b} {m} $ cast n)}
+    -> Day b m
+  fromInteger v = fromJust $ refineDay (cast v)
+
 
 ||| A type that represents a valid Julian Date
 |||
-||| Month and year are 0-indexed, so they can be represented with
-||| `Fin`.
+||| Day is a refined integer parameterized on the given month and
+||| year.
 export
 record Date where
   constructor MkDate
   year:  Nat
-  month: Fin 12
-  day:   Fin $ daysOfMonth year month
+  month: Month
+  day:   Day (IsLeapYear year) month
 
 
 ||| Construct a date from user input.
 |||
-||| This expects 1-based inputs for month and day.
-date : Nat -> Nat -> Nat -> Maybe Date
-date _    Z         _       = Nothing
-date _    _         Z       = Nothing
-date year (S month) (S day) = do
-  m <- natToFin month 12
-  d <- natToFin day $ daysOfMonth year m
+||| This may fail if the month or day fall outside the expected
+||| intervals.
+pack : Nat -> Bits8 -> Bits8 -> Maybe Date
+pack year m d = do
+  m <- refineMonth m
+  d <- refineDay   d
   Just $ MkDate year m d
 
 
 ||| Helper function to implement some popular interfaces.
-unpack : Date -> (Nat, Nat, Nat)
-unpack (MkDate year month day) = (year, finToNat month, finToNat day)
+unpack : Date -> (Nat, Bits8, Bits8)
+unpack (MkDate year (M month) (D day)) = (year, month, day)
 
-
-export
-Eq Date where
-  x == y = (unpack x) == (unpack y)
-
-export
-Ord Date where
-  compare x y = compare (unpack x) (unpack y)
+export Eq Date  where x == y      = (unpack x) == (unpack y)
+export Ord Date where compare x y = compare (unpack x) (unpack y)
 
 export
 Show Date where
@@ -121,10 +145,10 @@ parseDate s = case forget $ split ('-' ==) s of
       Just d  => Right d
   _         => fail "Too many fields"
 
+{-
 export
 FromJSON Date where
   fromJSON = withString "Date" parseDate
-
 
 export
 today : IO Date
