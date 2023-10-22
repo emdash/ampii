@@ -15,6 +15,7 @@ import System.Concurrency
 
 import Barcode
 import Control.ANSI
+import Date
 import Food
 import Measures
 import USBScale
@@ -35,11 +36,18 @@ data Command
 %runElab derive "Command" [Show,Eq]
 
 
+data Lifetime
+  = BestBy        Date
+  | UseBy         Date
+  | UseOrFreezeBy Date
+  | Expires       Date
+
 ||| A single item in the inventory
 record Item where
   constructor MkItem
   barcode: Barcode
   name:    String
+  life:    Lifetime
   init_wt: (Weight, Double)
   net_wt:  Maybe (Weight, Double)
   last_wt: Maybe (Weight, Double)

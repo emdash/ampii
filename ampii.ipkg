@@ -19,6 +19,7 @@ depends = contrib
 	, elab-util
 	, sop
 	, refined
+	, algebra
 
 -- modules to install
 modules = Date
@@ -30,7 +31,6 @@ modules = Date
 	, Shopping
 	, Util
 	, Inventory
-
 
 -- main file (i.e. file to load at REPL)
 main = Main
