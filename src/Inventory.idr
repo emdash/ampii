@@ -41,13 +41,14 @@ data Lifetime
   | UseBy         Date
   | UseOrFreezeBy Date
   | Expires       Date
+%runElab derive "Lifetime" [Show,Eq,Ord,FromJSON,ToJSON]
 
 ||| A single item in the inventory
 record Item where
   constructor MkItem
   barcode: Barcode
   name:    String
-  life:    Lifetime
+  life:    Maybe Lifetime
   init_wt: (Weight, Double)
   net_wt:  Maybe (Weight, Double)
   last_wt: Maybe (Weight, Double)
@@ -55,7 +56,7 @@ record Item where
 
 ||| Create a new item
 newItem : Barcode -> String -> (Weight, Double) -> Item
-newItem bc name w = MkItem bc name w Nothing Nothing
+newItem bc name w = MkItem bc name Nothing w Nothing Nothing
 
 ||| Get an item's remaining weight
 remaining : Item -> Maybe (Weight, Double)
