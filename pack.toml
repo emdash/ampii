@@ -9,14 +9,8 @@ type = "local"
 path = "test"
 ipkg = "test.ipkg"
 
-[custom.all.json]
+[custom.all.date]
 type   = "github"
-url    = "https://github.com/stefan-hoeck/idris2-json"
+url    = "https://github.com/emdash/idris-datetime"
 commit = "latest:main"
-ipkg   = "json.ipkg"
-
-[custom.all.elab-util]
-type   = "github"
-url    = "https://github.com/stefan-hoeck/idris2-elab-util"
-commit = "latest:main"
-ipkg   = "elab-util.ipkg"
+ipkg   = "date.ipkg"

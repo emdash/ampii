@@ -20,10 +20,10 @@ depends = contrib
 	, sop
 	, refined
 	, algebra
+	, date
 
 -- modules to install
-modules = Date
-	, Food
+modules = Food
 	, Main
         , Measures
 	, Plan
