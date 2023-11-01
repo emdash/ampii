@@ -19,39 +19,23 @@
 
 ||| A minimal units library for culinary purposes.
 |||
-||| The main goal is generating shopping lists from lists of
-||| recipes. It's not a general-purpose framework for dimensional
-||| analysis.
+||| I don't try to handle arbitrary numeric types: all quantities use
+||| double internally.
+|||
+||| I also don't try to model arbitrary changes of dimensionality: The
+||| main use case is conversions between volume and mass.
+|||
+||| I make no attempt to preserve units across operations. Every
+||| operation internally normalizes to the base units.
 |||
 ||| Generating shopping lists requires aggregating quantities of
 ||| ingredients, when the same ingredient might be specified by
 ||| weight, by volume, or by each even within the same recipe: all
-||| quantities within this domain can be equated to mass, since all
-||| foodstuffs have either density or average weight, however, this
-||| conversion depends on the foodstuff in question. Feedback is
-||| welcome here on whether I've used dependent types effectively.
+||| quantities within this domain can be equated to mass
 |||
-||| Therefore, internally, all operations on quantities are normalized
-||| to mass. This allows any two quantities to be added together. For
-||| presentation, normalized quantities are converted to the user's
-||| preferred measurement system as both weight *and* volume, since
-||| either or both may be useful in a shopping context.
-|||
-||| For those cooking in low-earth orbit: I perpetuate the usual
+||| For those cooking somewhere besides earth: I perpetuate the usual
 ||| fallacy of conflating mass and force within the US-customary
 ||| system, as this is how such units are used in the kitchen.
-|||
-||| For those cooking in europe: you probably don't need this app to
-||| begin with, unless you want to cook from american recipes, in
-||| which case, the unit-conversion features will probably be quite
-||| helpful.
-|||
-||| Design-wise: I'm trying to keep the code in this file agnostic
-||| w/r/t food-stuffs, with the eventual goal of replacing this
-||| library with a general-purpose dimensional-analysis
-||| framework. This is more of an exercise in working with dependent
-||| types than a pragmatic concern. If I cared about being pragmatic,
-||| I wouldn't be writing this in Idris.
 
 
 module Measures
@@ -65,157 +49,235 @@ import JSON.Derive
 %default total
 
 
-||| The ways in which normalization can fail
+||| This is not a general framework for dimensional analysis, so I
+||| only try to support a limited number of cases here.
+|||
+||| The main thing I want to capture is that Densty = Mass / Volume
 public export
-data Error
-  = UndefinedQuantity
-  | UndefinedDensity
-  | UndefinedWeight
-  | Mismatch a a
-  | Union Error Error
+data Dimension
+  = Scalar
+  | Mass
+  | Volume
+  | Density
+  | NotImplemented
+%runElab derive "Dimension" [Show, Eq, FromJSON, ToJSON]
 
-||| Sizes of whole ingredients
+
+||| Rules for multiplying quantities
+mul : Dimension -> Dimension -> Dimension
+mul Volume   Density = Mass
+mul Density  Volume  = Mass
+mul Scalar   x       = x
+mul x        Scalar  = x
+mul _        _       = NotImplemented
+
+||| Rules for dividing quantities
+div : Dimension -> Dimension -> Dimension
+div Scalar Scalar = Scalar
+div x      Scalar = x
+div Mass   Volume = Density
+div _      _      = NotImplemented
+
+
+||| The set of units that we support.
 public export
-data Size = Small | Med | Large | XLarge | Jumbo
-%runElab derive "Size" [Show,Eq,Ord,FromJSON,ToJSON]
+data Unit : Dimension -> Type where
+  S           : Unit Scalar
+  Ounces      : Unit Mass
+  Pounds      : Unit Mass
+  Grams       : Unit Mass
+  MilliGrams  : Unit Mass
+  KiloGrams   : Unit Mass
+  Gallons     : Unit Volume
+  Quarts      : Unit Volume
+  Pints       : Unit Volume
+  Cups        : Unit Volume
+  FluidOunces : Unit Volume
+  TableSpoons : Unit Volume
+  TeaSpoons   : Unit Volume
+  MilliLiters : Unit Volume
+  Liters      : Unit Volume
+  GramsPerML  : Unit Density
+%runElab deriveIndexed "Unit" [Eq]
 
-||| How to convert between volume or size + count, and mass.
 public export
-interface Eq m => Material m where
-  density : m ->         Maybe Double
-  weights : m -> Size -> Maybe Double
-  eq      : m -> m -> Bool
-  eq a b = a == b
+Show (Unit d) where
+  show S           = ""
+  show Ounces      = "oz"
+  show Pounds      = "lb"
+  show Grams       = "g"
+  show MilliGrams  = "mg"
+  show KiloGrams   = "Kg"
+  show Gallons     = "Gal"
+  show Quarts      = "qt"
+  show Pints       = "pt"
+  show Cups        = "C"
+  show FluidOunces = "floz"
+  show TableSpoons = "T"
+  show TeaSpoons   = "t"
+  show MilliLiters = "mL"
+  show Liters      = "L"
+  show GramsPerML  = "g/mL"
 
-||| Units of weight
 public export
-data Weight
-  = Ounce
-  | Pound
-  | Gram
-  | MilliGram
-  | KiloGram
-  | Cd
-  | Tael
-  | Grain
-  | Dwt
-  | Tonne
-  | Ton
-  | TroyOunce
+Uninhabited (Unit NotImplemented) where
+  uninhabited x impossible
 
-%runElab derive "Weight" [Show,Eq,Ord,FromJSON,ToJSON]
 
-||| Units of volume
-public export 
-data Volume
-  = Gal
-  | Qt
-  | Pt
-  | C
-  | Floz
-  | Tblsp
-  | Tsp
-  | ML
-  | L
-%runElab derive "Volume" [Show,Eq,Ord,FromJSON,ToJSON]
+||| Table of conversion factors expressed in terms of the base unit.
+conv : Unit d -> Double
+conv S           = 1.0
+conv Ounces      = 28.3492
+conv Pounds      = 28.3492 * 16
+conv Grams       = 1.0
+conv MilliGrams  = 0.001
+conv KiloGrams   = 1000.0
+conv Gallons     = 29.57344 * 128
+conv Quarts      = 29.57344 * 32
+conv Pints       = 29.57344 * 16
+conv Cups        = 29.57344 * 8
+conv FluidOunces = 29.57344
+conv TableSpoons = 5.0 * 3
+conv TeaSpoons   = 5.0
+conv MilliLiters = 1.0
+conv Liters      = 1000.0
+conv GramsPerML  = 1.0
 
-||| A dimensioned quantity, as it would appear in a recipe.
+
+||| An amount of some stuff with an associated unit
 public export
-data Quantity : m -> Type where
-  ByWeight : Double -> Weight -> m -> Quantity m
-  ByVolume : Double -> Volume -> m -> Quantity m
-  Whole    : Double -> Size   -> m -> Quantity m
-  Err      : Error                 -> Quantity m
+record Quantity (d : Dimension) where
+  constructor Q
+  amount : Double
+  unit   : Unit d
+%runElab deriveIndexed "Quantity" [Show, Eq]
 
 
--- This namespace avoids some name collisions, but may prove
--- unnecessary in the end
-namespace Normalized
-  {- conversion factors -}
-  export gramsPerOz : Double ; gramsPerOz = 28.34952
-  export mlPerFloz  : Double ; mlPerFloz  = 29.57344
-  export mlPerTsp   : Double ; mlPerTsp   = 5.0
+||| Table of base units for the given dimension
+baseUnit : {d : Dimension} -> Unit d
+baseUnit {d = Scalar}         = S
+baseUnit {d = Mass}           = Grams
+baseUnit {d = Volume}         = MilliLiters
+baseUnit {d = Density}        = GramsPerML
+baseUnit {d = NotImplemented} = assert_total $ idris_crash "Not Implemented"
 
-  ||| Internal quantity type normalizes everything to mass
-  data Mass : Type -> Type where
-    Gram : Material m => m -> Double -> Mass m
-    Err  : Error -> Mass m
-    
-  ||| Normalize to mass from a volume and material
-  export
-  fromVolume : Material m => m -> Double -> Mass m
-  {-
-  fromVolume what ml = case density what of
-    Just density => Gram what (ml * density)
-    Nothing      => Err UndefinedDensity 
-  -}
+||| Convert a given quantity to base units
+normalize : {d : Dimension} -> Quantity d -> Quantity d
+normalize {d = NotImplemented} x = absurd $ uninhabited x.unit
+normalize {d}                  x = Q (conv x.unit * x.amount) (baseUnit {d})
 
-  ||| Normalize to mass from (count, size)
-  export
-  fromWhole : Material m => Eq m => m -> Size -> Double -> Mass m
-  {-
-  fromWhole what size count = case weights what size of
-    Just weight => Gram what (weight * count)
-    Nothing     => Err UndefinedWeight
-  -}
+||| Convert a given quantity to the specified unit
+public export
+as : {d : Dimension} -> Quantity d -> Unit d -> Quantity d
+as x u = Q ((normalize x).amount / (conv u)) u
 
-  ||| Convert quantity to a Mass
-  export
-  toMass : Material m => Eq m => Quantity m -> Mass m
-  {-
-  toMass (ByWeight x Oz    what) = Gram       what (x * gramsPerOz)
-  toMass (ByWeight x Lb    what) = Gram       what (x * gramsPerOz * 16)
-  toMass (ByWeight x Gram  what) = Gram       what  x
-  toMass (ByVolume x Gal   what) = fromVolume what (x * mlPerFloz * 128)
-  toMass (ByVolume x Qt    what) = fromVolume what (x * mlPerFloz *  32)
-  toMass (ByVolume x Pt    what) = fromVolume what (x * mlPerFloz *  16)
-  toMass (ByVolume x C     what) = fromVolume what (x * mlPerFloz *   8)
-  toMass (ByVolume x Floz  what) = fromVolume what (x * mlPerFloz *   1)
-  toMass (ByVolume x Tblsp what) = fromVolume what (x * mlPerTsp  *   3)
-  toMass (ByVolume x Tsp   what) = fromVolume what (x * mlPerTsp  *   1)
-  toMass (ByVolume x ML    what) = fromVolume what  x
-  toMass (ByVolume x L     what) = fromVolume what (x * 1000)
-  toMass (Whole    x s     what) = fromWhole  what s x
-  toMass (Err err)               = Normalized.Err err
-  -}
+||| Type-safe multiplication of quantities
+|||
+||| The result type respects the dimensionality of the operands.
+public export
+(*)
+  : {a, b : Dimension}
+  -> Quantity a
+  -> Quantity b
+  -> Quantity (a `mul` b)
+(*) {a} {b} x y = Q
+  ((normalize x).amount * (normalize y).amount)
+  (baseUnit {d = a `mul` b})
 
-  ||| Addition of Masses
-  export
-  add : Material m => Mass m -> Mass m -> Mass m
-  {-
-  add (Gram this x) (Gram that y)  =
-    if   (eq this that)
-    then Gram this (x + y)
-    else Err (Mismatch this that)
-  add (Err err)  (Gram _ _) = Err err
-  add (Gram _ _) (Err  err) = Err err
-  add (Err e1)   (Err  e2)  = Err (Union e1 e2)
-  -}
+||| Type-safe division of quantities
+|||
+||| The result type respects the dimensionality of the operands.
+public export
+(/)
+  : {a, b : Dimension}
+  -> Quantity a
+  -> Quantity b
+  -> Quantity (a `div` b)
+(/) {a} {b} x y = Q
+  ((normalize x).amount / (normalize y).amount)
+  (baseUnit {d = a `div` b})
 
-  ||| Scaling of Masses
-  export
-  scale : Double -> Mass m -> Mass m
-  {-
-  scale scale (Gram what x) = Gram what (scale * x)
-  scale scale (Err  err)    = Err err
-  -}
+||| Type-safe addition of quantities
+public export
+(+) : {d : Dimension} -> Quantity d -> Quantity d -> Quantity d
+(+) {d} x y = Q ((normalize x).amount + (normalize y).amount) (baseUnit {d})
 
-  ||| Convert from Mass to Quantity
-  export
-  fromMass : Material m => Eq m => Mass m -> Quantity m
-  {-
-  fromMass (Gram what x) = ByWeight x Gram what
-  fromMass (Err err)     = Measures.Err  err
-  -}
+||| Type-safe subtraction of quantities
+public export
+(-) : {d : Dimension} -> Quantity d -> Quantity d -> Quantity d
+(-) {d} x y = Q ((normalize x).amount - (normalize y).amount) (baseUnit {d})
+
+||| Discard unit and convert to a plain double
+public export
+Cast (Quantity d) Double where
+  cast q = q.amount
 
 
-||| Add two quantities
-export
-addQuantity : Material m => Eq m => Quantity m -> Quantity m -> Quantity m
-addQuantity x y = fromMass (Normalized.add (toMass x) (toMass y))
+{- Convenient abbreviations for working with quantities ******************** -}
+
+||| Factor out the type of abreviations to compress the following table
+public export
+0 Abr : Dimension -> Type ; Abr d = Double -> Quantity d
+
+public export (.oz)   : Abr Mass   ; (.oz)   x = Q x Ounces
+public export (.lb)   : Abr Mass   ; (.lb)   x = Q x Pounds
+public export (.g)    : Abr Mass   ; (.g)    x = Q x Grams
+public export (.mg)   : Abr Mass   ; (.mg)   x = Q x MilliGrams
+public export (.Kg)   : Abr Mass   ; (.Kg)   x = Q x KiloGrams
+public export (.Gal)  : Abr Volume ; (.Gal)  x = Q x Gallons
+public export (.qt)   : Abr Volume ; (.qt)   x = Q x Quarts
+public export (.pt)   : Abr Volume ; (.pt)   x = Q x Pints
+public export (.C)    : Abr Volume ; (.C)    x = Q x Cups
+public export (.floz) : Abr Volume ; (.floz) x = Q x FluidOunces
+public export (.T)    : Abr Volume ; (.T)    x = Q x TableSpoons
+public export (.t)    : Abr Volume ; (.t)    x = Q x TeaSpoons
+public export (.mL)   : Abr Volume ; (.mL)   x = Q x MilliLiters
+public export (.L)    : Abr Volume ; (.L)    x = Q x Liters
 
 
-||| Scale a quantity by a scalar
-export
-scaleQuantity : Material m => Eq m => Double -> Quantity m -> Quantity m
-scaleQuantity s x = fromMass (Normalized.scale s (toMass x))
+{- Support JSON Deserialization ******************************************** -}
+
+||| Parse a given unit abbreviation.
+|||
+||| This wasn't able to be automatically derived
+parseUnit : (d :Dimension) -> Parser String (Unit d)
+parseUnit Scalar ""     = Right S
+parseUnit Mass   "oz"   = Right Ounces
+parseUnit Mass   "lb"   = Right Pounds
+parseUnit Mass   "g"    = Right Grams
+parseUnit Mass   "mg"   = Right MilliGrams
+parseUnit Mass   "Kg"   = Right KiloGrams
+parseUnit Volume "Gal"  = Right Gallons
+parseUnit Volume "qt"   = Right Quarts
+parseUnit Volume "pt"   = Right Pints
+parseUnit Volume "C"    = Right Cups
+parseUnit Volume "floz" = Right FluidOunces
+parseUnit Volume "T"    = Right TableSpoons
+parseUnit Volume "t"    = Right TeaSpoons
+parseUnit Volume "mL"   = Right MilliLiters
+parseUnit Volume "L"    = Right Liters
+parseUnit _      u      = fail "unrecognized unit \{u}"
+
+||| Parse a quantity as `amount:unit`
+parseQuantity : {d: Dimension} -> Parser String (Quantity d)
+parseQuantity {d} str = case toList $ split (== ':') str of
+  [amount, unit] => case parseDouble amount of
+    Nothing => fail "Invalid quantity: \{amount}"
+    Just x  => Right $ Q x !(parseUnit d unit)
+  _ => fail "Invalid quantity: \{str}"
+
+public export
+FromJSON (Unit Mass) where
+  fromJSON = withString "Unit Mass" (parseUnit Mass)
+
+public export
+FromJSON (Unit Volume) where
+  fromJSON = withString "Unit Volume" (parseUnit Volume)
+
+public export
+ToJSON (Quantity d) where
+  toJSON q = toJSON "\{show q.amount}:\{show q.unit}"
+
+public export
+{d : Dimension} -> FromJSON (Quantity d) where
+  fromJSON = withString "Quantity \{show d}" parseQuantity

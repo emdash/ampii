@@ -36,10 +36,6 @@ import USBScale
 0 Id : Type
 Id = String
 
-||| A temporary type alias for units of mass, until I get around to
-||| re-factoring Measures
-0 Mass : Type
-Mass = (Weight, Double)
 
 ||| How long a given food item is expected to last.
 |||
@@ -80,8 +76,8 @@ record Container where
   food:    Barcode
   life:    LifeTime
   type:    ContainerType
-  empty:   Mass
-  current: Mass
+  empty:   Weight
+  current: Weight
 %runElab derive "Container" [Show,Eq,FromJSON,ToJSON]
 
 ||| The different ways we can query the inventory.
@@ -108,7 +104,7 @@ Inventory = SortedMap Id Container
 ||| each type.
 data Prompt : a -> Type where
   Direct     : a     -> Prompt a
-  FromScale  :          Prompt Mass
+  FromScale  :          Prompt Weight
   QueryFood  : Query -> Prompt Barcode
   ChooseFood :          Prompt Barcode
   QueryId    : Query -> Prompt Id
@@ -130,13 +126,13 @@ Show a => Show (Prompt a) where
 data Command
   = Search   Query
   | Show     (Prompt Id)
-  | Weigh    (Prompt Id) (Prompt Mass)
+  | Weigh    (Prompt Id) (Prompt Weight)
   | Create   (Prompt Id)
              (Prompt Barcode)
              LifeTime
              ContainerType
-             (Prompt Mass)
-             (Prompt Mass)
+             (Prompt Weight)
+             (Prompt Weight)
   | Transfer (Prompt Id) (Prompt Id)
   | Delete   (Prompt Id)
   | Quit
@@ -215,17 +211,16 @@ parseContainerType "resuable" = Just Reusable
 parseContainerType _          = Nothing
 
 ||| Parse a mass value in a command line.
-parseWeight : String -> Maybe $ Prompt Mass
+parseWeight : String -> Maybe $ Prompt Weight
 parseWeight "scale" = Just $ FromScale
 parseWeight str =
-  let
-    (decimal, tail) := break (\x => not (isDigit x || x == '.')) str
-  in case tail of
-    "oz" => Just $ Direct (Ounce,     cast decimal)
-    "g"  => Just $ Direct (Gram,      cast decimal)
-    "lb" => Just $ Direct (Pound,     cast decimal)
-    "kg" => Just $ Direct (KiloGram,  cast decimal)
-    "mg" => Just $ Direct (MilliGram, cast decimal)
+  let (decimal, unit) := break (\x => not (isDigit x || (x == '.'))) str
+  in case unit of
+    "oz" => map Direct $ map (.oz) $ parseDouble decimal
+    "g"  => map Direct $ map (.g ) $ parseDouble decimal
+    "lb" => map Direct $ map (.lb) $ parseDouble decimal
+    "Kg" => map Direct $ map (.Kg) $ parseDouble decimal
+    "mg" => map Direct $ map (.mg) $ parseDouble decimal
     _    => Nothing
 
 ||| Collect the complete inventory record from the user.
@@ -290,7 +285,7 @@ readInventory path = do
 
 {- Command Processing --------------------------------------------------------}
 
-run : Command -> IO ()
+run : Command -> IO Builtin.Unit
 run = putStrLn . show
 
 
@@ -299,7 +294,7 @@ run = putStrLn . show
 
 ||| Entry point for the `inventory` subcommand.
 partial export
-main : List String -> IO ()
+main : List String -> IO Builtin.Unit
 main args = case parse args of
   Nothing => putStrLn "Invalid command: \{unwords args}"
   Just cmd => run cmd

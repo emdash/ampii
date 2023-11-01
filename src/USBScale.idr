@@ -20,58 +20,55 @@ import Measures
 %default total
 
 
+
+||| A temporary type alias for units of mass, until I get around to
+||| re-factoring Measures
+public export
+0 Weight : Type
+Weight = Quantity Mass
+
 ||| Move to Utils lib
-debug : Show a => a -> IO ()
+debug : Show a => a -> IO Builtin.Unit
 debug value = do
   _ <- fPutStrLn stderr (show value)
   pure ()
 
-
 ||| Unit to use when we can't determine from the USB traffic
-defaultUnit : Weight ; defaultUnit = Gram
-
+defaultUnit : Unit Mass
+defaultUnit = Grams
 
 ||| Convert integer unit into type
-units : Int -> Weight
-units 0  = defaultUnit
-units 1  = MilliGram
-units 2  = Gram
-units 3  = KiloGram
-units 4  = Cd
-units 5  = Tael
-units 6  = Grain
-units 7  = Dwt
-units 8  = Tonne
-units 9  = Ton
-units 10 = TroyOunce
-units 11 = Ounce
-units 12 = Pound
+units : Int -> Unit Mass
+units 1  = MilliGrams
+units 2  = Grams
+units 3  = KiloGrams
+units 11 = Ounces
+units 12 = Pounds
 units _  = defaultUnit
 
-
+||| Result of scale IO operation
 public export
 data Result
   = Empty
   | Weighing
   | Fault String
-  | Ok (Weight, Double)
+  | Ok Weight
 %runElab derive "Result" [Show,Eq]
 
 
 ||| Calculate the current weight from the raw binary values
-calcWeight : Int -> Int -> Int -> Int -> (Weight, Double)
+calcWeight : Int -> Int -> Int -> Int -> Weight
 calcWeight unit msb lsb exponent =
   let
     mantissa = cast {to = Double} ((msb `shiftL` 8) .|. lsb)
-    unit = units unit
+    unit   = units unit
     scaled = case unit of
-      Ounce => mantissa / 10.0
-      _     => mantissa
+      Ounces => mantissa / 10.0
+      _      => mantissa
   in case exponent of
-      0x00 => (unit, scaled)
-      0xff => (unit, scaled)
-      _    => (unit, pow scaled (cast exponent))
-
+      0x00 => Q (cast scaled) unit
+      0xff => Q (cast scaled) unit
+      _    => Q (pow scaled (cast exponent)) unit
 
 ||| Decode the 6-byte HID packet into a scale value
 decode : List Int -> Result
@@ -90,21 +87,19 @@ decode [report, status, unit, exp, lsb, msb] =
     else Fault "Error Reading Scale!"
 decode _ = Fault"Error, invalid packet"
 
-
 ||| Keep reading from the scale, placing the most recent readings into
 ||| the channel.
 partial
-loop : (Result -> IO ()) -> Buffer -> File -> IO (Either String ())
+loop : (Result -> IO Builtin.Unit) -> Buffer -> File -> IO (Either String Builtin.Unit)
 loop post buf file = do
   _ <- readBufferData file buf 0 6
   d <- bufferData buf
   post (decode d)
   loop post buf file
 
-
 ||| Entry point for the scale thread
 partial
-run : (Result -> IO ()) -> String -> IO ()
+run : (Result -> IO Builtin.Unit) -> String -> IO Builtin.Unit
 run post path = do
   Just buf <- newBuffer 6
     | Nothing => debug "error, could not allocate buffer"
@@ -115,25 +110,23 @@ run post path = do
     onError : FileError -> IO String
     onError err = pure $ show err
 
-
 ||| Spawn the scale reading thread
 |||
 ||| The function parameter should post the USBScale.result to the main
 ||| event queue.
 export partial
-spawn : String -> (Result -> IO ()) -> IO ThreadID
+spawn : String -> (Result -> IO Builtin.Unit) -> IO ThreadID
 spawn path post = fork (run post path)
-
 
 ||| Entry point for basic scale command.
 export partial
-main : List String -> IO ()
+main : List String -> IO Builtin.Unit
 main (path :: _) = do
   chan <- makeChannel
   _ <- spawn path (channelPut chan)
   read chan
   where
-    read : Channel Result -> IO ()
+    read : Channel Result -> IO Builtin.Unit
     read chan = do
       msg <- channelGet chan
       putStrLn (show msg)
