@@ -213,15 +213,7 @@ parseContainerType _          = Nothing
 ||| Parse a mass value in a command line.
 parseWeight : String -> Maybe $ Prompt Weight
 parseWeight "scale" = Just $ FromScale
-parseWeight str =
-  let (decimal, unit) := break (\x => not (isDigit x || (x == '.'))) str
-  in case unit of
-    "oz" => map Direct $ map (.oz) $ parseDouble decimal
-    "g"  => map Direct $ map (.g ) $ parseDouble decimal
-    "lb" => map Direct $ map (.lb) $ parseDouble decimal
-    "Kg" => map Direct $ map (.Kg) $ parseDouble decimal
-    "mg" => map Direct $ map (.mg) $ parseDouble decimal
-    _    => Nothing
+parseWeight str = map Direct $ quantityFromString str
 
 ||| Collect the complete inventory record from the user.
 parseCreateCmd : List String -> Maybe Command

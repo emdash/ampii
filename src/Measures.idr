@@ -41,6 +41,7 @@
 module Measures
 
 
+import Data.Either
 import Derive.Prelude
 import JSON.Derive
 
@@ -49,10 +50,15 @@ import JSON.Derive
 %default total
 
 
-||| This is not a general framework for dimensional analysis, so I
-||| only try to support a limited number of cases here.
+||| A dimension is a measure of some physical quantity.
 |||
-||| The main thing I want to capture is that Densty = Mass / Volume
+||| Here we are primarily concerned with:
+||| - Scalar
+||| - Mass
+||| - Volume
+||| - Density
+|||
+||| Densty = Mass / Volume
 public export
 data Dimension
   = Scalar
@@ -73,13 +79,22 @@ mul _        _       = NotImplemented
 
 ||| Rules for dividing quantities
 div : Dimension -> Dimension -> Dimension
-div Scalar Scalar = Scalar
-div x      Scalar = x
-div Mass   Volume = Density
+div Scalar Scalar   = Scalar
+div x      Scalar   = x
+div Mass   Volume   = Density
+div Mass   Mass     = Scalar
+div Volume Volume   = Scalar
+div Density Density = Scalar
 div _      _      = NotImplemented
 
 
 ||| The set of units that we support.
+|||
+||| It's indexed by Dimension, so we can distinguish at the type level
+||| between scalars, units of mass, a units of volume, etc.
+|||
+||| Note that there's deliberately no data constructor for
+||| `Unit NotImplemented`
 public export
 data Unit : Dimension -> Type where
   S           : Unit Scalar
@@ -100,8 +115,16 @@ data Unit : Dimension -> Type where
   GramsPerML  : Unit Density
 %runElab deriveIndexed "Unit" [Eq]
 
+||| Ties off this loose end, and helpful to avoid having to implement
+||| operations on quantities we don't support.
 public export
-Show (Unit d) where
+Uninhabited (Unit NotImplemented) where
+  uninhabited x impossible
+
+
+||| Convert a unit to its short form
+public export
+{d : Dimension} -> Show (Unit d) where
   show S           = ""
   show Ounces      = "oz"
   show Pounds      = "lb"
@@ -118,10 +141,6 @@ Show (Unit d) where
   show MilliLiters = "mL"
   show Liters      = "L"
   show GramsPerML  = "g/mL"
-
-public export
-Uninhabited (Unit NotImplemented) where
-  uninhabited x impossible
 
 
 ||| Table of conversion factors expressed in terms of the base unit.
@@ -144,13 +163,15 @@ conv Liters      = 1000.0
 conv GramsPerML  = 1.0
 
 
-||| An amount of some stuff with an associated unit
+||| An amount of some stuff with an associated unit.
+|||
+||| Quantities are indexed over the dimensionality of the unit.
 public export
 record Quantity (d : Dimension) where
   constructor Q
   amount : Double
   unit   : Unit d
-%runElab deriveIndexed "Quantity" [Show, Eq]
+%runElab deriveIndexed "Quantity" [Eq]
 
 
 ||| Table of base units for the given dimension
@@ -159,24 +180,29 @@ baseUnit {d = Scalar}         = S
 baseUnit {d = Mass}           = Grams
 baseUnit {d = Volume}         = MilliLiters
 baseUnit {d = Density}        = GramsPerML
+-- xxx: is there a way to avoid using `idris_crash` here?
+-- I believe that there might be, but anyway...
 baseUnit {d = NotImplemented} = assert_total $ idris_crash "Not Implemented"
 
-||| Convert a given quantity to base units
+||| Convert the amount given quantity into the base unit for a given dimension.
 normalize : {d : Dimension} -> Quantity d -> Quantity d
 normalize {d = NotImplemented} x = absurd $ uninhabited x.unit
 normalize {d}                  x = Q (conv x.unit * x.amount) (baseUnit {d})
 
 ||| Convert a given quantity to the specified unit
+|||
+||| Use it like: `5.Gal \`as\` Liters`
 public export
 as : {d : Dimension} -> Quantity d -> Unit d -> Quantity d
 as x u = Q ((normalize x).amount / (conv u)) u
 
-||| Type-safe multiplication of quantities
+||| Multiply two quantities
 |||
-||| The result type respects the dimensionality of the operands.
+||| The result type respects the dimensionality of the operands, so we
+||| must implement this as a function `(*)`, and not via `Num`.
 public export
 (*)
-  : {a, b : Dimension}
+  :  {a, b : Dimension}
   -> Quantity a
   -> Quantity b
   -> Quantity (a `mul` b)
@@ -186,7 +212,8 @@ public export
 
 ||| Type-safe division of quantities
 |||
-||| The result type respects the dimensionality of the operands.
+||| The result type respects the dimensionality of the operands, so we
+||| must implement this as a function `(/)` and not via `Fractional`.
 public export
 (/)
   : {a, b : Dimension}
@@ -197,12 +224,18 @@ public export
   ((normalize x).amount / (normalize y).amount)
   (baseUnit {d = a `div` b})
 
-||| Type-safe addition of quantities
+||| Type-safe addition of quantities.
+|||
+||| We can't implement `Num` for quantities, as the behavior of (*)
+||| doesn't match the type signature.
 public export
 (+) : {d : Dimension} -> Quantity d -> Quantity d -> Quantity d
 (+) {d} x y = Q ((normalize x).amount + (normalize y).amount) (baseUnit {d})
 
 ||| Type-safe subtraction of quantities
+|||
+||| We *could* implement `Neg` for quantities, but it's unclear what
+||| the meaning of `neg` is for the quantities we support.
 public export
 (-) : {d : Dimension} -> Quantity d -> Quantity d -> Quantity d
 (-) {d} x y = Q ((normalize x).amount - (normalize y).amount) (baseUnit {d})
@@ -239,43 +272,57 @@ public export (.L)    : Abr Volume ; (.L)    x = Q x Liters
 
 ||| Parse a given unit abbreviation.
 |||
-||| This wasn't able to be automatically derived
-parseUnit : (d :Dimension) -> Parser String (Unit d)
-parseUnit Scalar ""     = Right S
-parseUnit Mass   "oz"   = Right Ounces
-parseUnit Mass   "lb"   = Right Pounds
-parseUnit Mass   "g"    = Right Grams
-parseUnit Mass   "mg"   = Right MilliGrams
-parseUnit Mass   "Kg"   = Right KiloGrams
-parseUnit Volume "Gal"  = Right Gallons
-parseUnit Volume "qt"   = Right Quarts
-parseUnit Volume "pt"   = Right Pints
-parseUnit Volume "C"    = Right Cups
-parseUnit Volume "floz" = Right FluidOunces
-parseUnit Volume "T"    = Right TableSpoons
-parseUnit Volume "t"    = Right TeaSpoons
-parseUnit Volume "mL"   = Right MilliLiters
-parseUnit Volume "L"    = Right Liters
-parseUnit _      u      = fail "unrecognized unit \{u}"
+||| This is meant to be the
+public export
+unitFromString : {d : Dimension} -> String -> Maybe (Unit d)
+unitFromString {d = Scalar} ""     = Just S
+unitFromString {d = Mass  } "oz"   = Just Ounces
+unitFromString {d = Mass  } "lb"   = Just Pounds
+unitFromString {d = Mass  } "g"    = Just Grams
+unitFromString {d = Mass  } "mg"   = Just MilliGrams
+unitFromString {d = Mass  } "Kg"   = Just KiloGrams
+unitFromString {d = Volume} "Gal"  = Just Gallons
+unitFromString {d = Volume} "qt"   = Just Quarts
+unitFromString {d = Volume} "pt"   = Just Pints
+unitFromString {d = Volume} "C"    = Just Cups
+unitFromString {d = Volume} "floz" = Just FluidOunces
+unitFromString {d = Volume} "T"    = Just TableSpoons
+unitFromString {d = Volume} "t"    = Just TeaSpoons
+unitFromString {d = Volume} "mL"   = Just MilliLiters
+unitFromString {d = Volume} "L"    = Just Liters
+unitFromString              _      = Nothing
 
-||| Parse a quantity as `amount:unit`
-parseQuantity : {d: Dimension} -> Parser String (Quantity d)
-parseQuantity {d} str = case toList $ split (== ':') str of
-  [amount, unit] => case parseDouble amount of
-    Nothing => fail "Invalid quantity: \{amount}"
-    Just x  => Right $ Q x !(parseUnit d unit)
-  _ => fail "Invalid quantity: \{str}"
+||| Parse a quantity as `amount ++ unit`
+public export
+quantityFromString : {d : Dimension} -> String -> Maybe (Quantity d)
+quantityFromString {d} str =
+  let (amount, unit) := break (\x => not (isDigit x || (x == '.'))) str
+  in case parseDouble amount of
+    Nothing => Nothing
+    Just x  => Just $ Q x !(unitFromString unit)
 
 public export
-FromJSON (Unit Mass) where
-  fromJSON = withString "Unit Mass" (parseUnit Mass)
+{d : Dimension} -> Show (Quantity d) where
+  show (Q a u) = "\{show a}\{show u}"
+
+||| Parse a unit from a JSON value
+parseUnit : {d : Dimension} -> Parser String (Unit d)
+parseUnit u = case (unitFromString u) of
+  Nothing => fail "unrecognized unit \{u}"
+  Just u  => Right u
+
+||| Parse a quantity from a JSON value
+parseQuantity : {d : Dimension} -> Parser String (Quantity d)
+parseQuantity q = case (quantityFromString q) of
+  Nothing => fail "unrecognized quantity \{q}"
+  Just q  => Right q
 
 public export
-FromJSON (Unit Volume) where
-  fromJSON = withString "Unit Volume" (parseUnit Volume)
+{d : Dimension} -> FromJSON (Unit d) where
+  fromJSON = withString "Unit Mass" parseUnit
 
 public export
-ToJSON (Quantity d) where
+{d : Dimension} -> ToJSON (Quantity d) where
   toJSON q = toJSON "\{show q.amount}:\{show q.unit}"
 
 public export
