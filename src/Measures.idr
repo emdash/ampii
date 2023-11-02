@@ -323,7 +323,7 @@ public export
 
 public export
 {d : Dimension} -> ToJSON (Quantity d) where
-  toJSON q = toJSON "\{show q.amount}:\{show q.unit}"
+  toJSON q = toJSON "\{show q}"
 
 public export
 {d : Dimension} -> FromJSON (Quantity d) where

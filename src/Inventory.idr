@@ -135,12 +135,7 @@ data Command
              (Prompt Weight)
   | Transfer (Prompt Id) (Prompt Id)
   | Delete   (Prompt Id)
-  | Quit
 %runElab derive "Command" [Show]
-
-
-||| XXX: this method is missing from the date library
-fromString : String -> Maybe Date
 
 
 ||| Parse a single term in a query.
@@ -242,6 +237,9 @@ parse _                      = Nothing
 {- IO ------------------------------------------------------------------------}
 
 
+idToPath : String -> String
+idToPath id = "inventory/\{id}.json"
+
 ||| Read a single container entry from the inventory directory
 covering
 readContainer : String -> IO (Either String Container)
@@ -250,7 +248,6 @@ readContainer file = do
   case decode contents of
     Right c => pure $ Right c
     Left  e => pure $ Left "Corrupt file \{file}: \{show e}"
-
 
 ||| Read the given list of containers from the inventory directory
 covering
@@ -271,14 +268,47 @@ readInventory path = do
   Right files <- listDir path | Left _ => pure $ Left "Invalid Path"
   readContainers files
 
-
-||| Run the specified operation on
+||| Save the given record to the inventory
+covering
+saveContainer : Id -> Container -> IO Builtin.Unit
+saveContainer file c = do
+  Right _ <- writeFile file (encode c) | Left err => putStrLn (show err)
+  putStrLn "Saved: \{file}"
 
 
 {- Command Processing --------------------------------------------------------}
 
+covering
+runPrompt : Prompt x -> IO x
+runPrompt (Direct y) = pure y
+runPrompt FromScale = ?runPrompt_rhs_1
+runPrompt (QueryFood y) = ?runPrompt_rhs_2
+runPrompt ChooseFood = ?runPrompt_rhs_3
+runPrompt (QueryId y) = ?runPrompt_rhs_4
+runPrompt ChooseId = ?runPrompt_rhs_5
+
+covering
 run : Command -> IO Builtin.Unit
-run = putStrLn . show
+run (Search x)  = ?hole_0
+run (Show x)    = do
+  id <- runPrompt x
+  let file = idToPath id
+  Right cont <- readContainer file | Left err => putStrLn "\{show err}: \{id}"
+  putStrLn $ show cont
+run (Weigh x y) = ?hole_2
+run (Create id bc lt ct ew cw) = do
+  id <- runPrompt id
+  bc <- runPrompt bc
+  ew <- runPrompt ew
+  cw <- runPrompt cw
+  let file = idToPath id
+  saveContainer file (MkContainer bc lt ct ew cw)
+run (Transfer x y) = ?hole_4
+run (Delete id) = do
+  id <- runPrompt id
+  let file = idToPath id
+  Right _ <- removeFile file | Left err => putStrLn $ show err
+  putStrLn "Deleted: \{id}"
 
 
 {- Entry Point ---------------------------------------------------------------}
@@ -289,4 +319,6 @@ partial export
 main : List String -> IO Builtin.Unit
 main args = case parse args of
   Nothing => putStrLn "Invalid command: \{unwords args}"
-  Just cmd => run cmd
+  Just cmd => do
+    putStrLn $ show cmd
+    run cmd
