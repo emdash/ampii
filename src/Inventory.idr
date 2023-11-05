@@ -13,6 +13,7 @@ import Data.Vect
 import Data.SortedMap
 import JSON.Derive
 import Data.String
+import System
 import System.File
 import System.Directory
 import System.Concurrency
@@ -279,33 +280,35 @@ saveContainer file c = do
 {- Command Processing --------------------------------------------------------}
 
 covering
-runPrompt : Prompt x -> IO x
-runPrompt (Direct y) = pure y
-runPrompt FromScale = ?runPrompt_rhs_1
-runPrompt (QueryFood y) = ?runPrompt_rhs_2
-runPrompt ChooseFood = ?runPrompt_rhs_3
-runPrompt (QueryId y) = ?runPrompt_rhs_4
-runPrompt ChooseId = ?runPrompt_rhs_5
+runPrompt : String -> Prompt x -> IO x
+runPrompt _ (Direct y) = pure y
+runPrompt device FromScale = case !(getWeight device) of
+  Left  err => assert_total $ idris_crash "couldn't read scale"
+  Right weight => pure weight
+runPrompt _ (QueryFood y) = ?runPrompt_rhs_2
+runPrompt _ ChooseFood = ?runPrompt_rhs_3
+runPrompt _ (QueryId y) = ?runPrompt_rhs_4
+runPrompt _ ChooseId = ?runPrompt_rhs_5
 
 covering
-run : Command -> IO Builtin.Unit
-run (Search x)  = ?hole_0
-run (Show x)    = do
-  id <- runPrompt x
+run : String -> Command -> IO Builtin.Unit
+run _ (Search x)  = ?hole_0
+run path (Show x)    = do
+  id <- runPrompt path x
   let file = idToPath id
   Right cont <- readContainer file | Left err => putStrLn "\{show err}: \{id}"
   putStrLn $ show cont
-run (Weigh x y) = ?hole_2
-run (Create id bc lt ct ew cw) = do
-  id <- runPrompt id
-  bc <- runPrompt bc
-  ew <- runPrompt ew
-  cw <- runPrompt cw
+run path (Weigh x y) = ?hole_2
+run path (Create id bc lt ct ew cw) = do
+  id <- runPrompt path id
+  bc <- runPrompt path bc
+  ew <- runPrompt path ew
+  cw <- runPrompt path cw
   let file = idToPath id
   saveContainer file (MkContainer bc lt ct ew cw)
-run (Transfer x y) = ?hole_4
-run (Delete id) = do
-  id <- runPrompt id
+run _ (Transfer x y) = ?hole_4
+run path (Delete id) = do
+  id <- runPrompt path id
   let file = idToPath id
   Right _ <- removeFile file | Left err => putStrLn $ show err
   putStrLn "Deleted: \{id}"
@@ -317,8 +320,11 @@ run (Delete id) = do
 ||| Entry point for the `inventory` subcommand.
 partial export
 main : List String -> IO Builtin.Unit
-main args = case parse args of
-  Nothing => putStrLn "Invalid command: \{unwords args}"
-  Just cmd => do
-    putStrLn $ show cmd
-    run cmd
+main args = do
+  Just scale_device_path <- getEnv "AMPII_SCALE_DEVICE"
+                         | Nothing => putStrLn "No scale device"
+  case parse args of
+    Nothing => putStrLn "Invalid command: \{unwords args}"
+    Just cmd => do
+      putStrLn $ show cmd
+      run scale_device_path cmd

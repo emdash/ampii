@@ -7,6 +7,7 @@ module USBScale
 
 import Data.Bits
 import Data.Buffer
+import Data.Either
 import Data.Vect
 import System.Concurrency
 import System.File
@@ -87,17 +88,32 @@ decode [report, status, unit, exp, lsb, msb] =
     else Fault "Error Reading Scale!"
 decode _ = Fault"Error, invalid packet"
 
-||| Keep reading from the scale, placing the most recent readings into
-||| the channel.
-partial
-loop : (Result -> IO Builtin.Unit) -> Buffer -> File -> IO (Either String Builtin.Unit)
-loop post buf file = do
-  _ <- readBufferData file buf 0 6
-  d <- bufferData buf
-  post (decode d)
-  loop post buf file
 
-||| Entry point for the scale thread
+||| Synchronously read from the scale
+|||
+||| We can't necessarily trust the first weight we get, so we wait for
+||| a few valid weights to come in before returning the value.
+export partial
+getWeight : String -> IO (Either String Weight)
+getWeight path = do
+  Just buf <- newBuffer 6 | Nothing => pure $ Left "Couldn't allocate buffer"
+  withFile path Read onError (loopN buf 5 Nothing)
+  where
+    loopN : Buffer -> Nat -> Maybe Weight -> File -> IO (Either String Weight)
+    loopN buf Z     r file = pure $ maybeToEither "impossible" r
+    loopN buf (S n) r file = do
+      putStrLn "\{show r}: (\{show n} tries remaining...)"
+      _ <- readBufferData file buf 0 6
+      d <- bufferData buf
+      case decode d of
+        Ok w => loopN buf n     (Just w) file
+        _    => loopN buf (S n) r        file
+
+    onError : FileError -> IO String
+    onError err = pure $ show err
+
+
+||| Continuously read from the scale into a channel.
 partial
 run : (Result -> IO Builtin.Unit) -> String -> IO Builtin.Unit
 run post path = do
@@ -107,8 +123,20 @@ run post path = do
     | Left err => debug err
   pure ()
   where
+    loop
+      : (Result -> IO Builtin.Unit)
+      -> Buffer
+      -> File
+      -> IO (Either String Builtin.Unit)
+    loop post buf file = do
+      _ <- readBufferData file buf 0 6
+      d <- bufferData buf
+      post (decode d)
+      loop post buf file
+
     onError : FileError -> IO String
     onError err = pure $ show err
+
 
 ||| Spawn the scale reading thread
 |||
@@ -118,9 +146,13 @@ export partial
 spawn : String -> (Result -> IO Builtin.Unit) -> IO ThreadID
 spawn path post = fork (run post path)
 
+
 ||| Entry point for basic scale command.
 export partial
 main : List String -> IO Builtin.Unit
+main ("--once" :: path :: _) = do
+  weight <- getWeight path
+  putStrLn $ show weight
 main (path :: _) = do
   chan <- makeChannel
   _ <- spawn path (channelPut chan)
