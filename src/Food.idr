@@ -25,22 +25,58 @@ import Measures
 import Barcode
 import Data.SortedMap
 import Data.SortedSet
+import JSON.Derive
+import JSON
+import TUI
 
 
 %default total
+%language ElabReflection
+%hide Measures.Unit
 
-
+||| Nutritional data
 public export
-record Food where
-  name:         String
-  servingSize:  Quantity  Mass
-  nutrition:    SortedMap String Double
-  imagePath:    String
-  sources:      SortedSet String
-  substitutes:  SortedSet Barcode
+record Nutrition where
+  constructor N
+  servingSize : Weight
+  values : SortedMap String Weight
+%runElab derive "Nutrition" [Show, Eq, ToJSON, FromJSON]
 
-
+||| Abstract food type
 public export
-0 FoodDB : Type
-FoodDB = SortedMap Barcode Food
+record FoodB f where
+  constructor MkFood
+  name:         f String
+  brand:        f $ String
+  barcode:      f $ Barcode
+  nutrition:    f $ Nutrition
+%runElab derive "FoodB" [Show, Eq, ToJSON, FromJSON]
 
+||| A complete, valid food record that can be stored in a database.
+public export 0 Food : Type ; Food = FoodB id
+
+{-
+||| A food variant where every field is optional, allowing us to
+||| construct it incrementally.
+export 0 FoodEditor : Type ; FoodEditor = AFood Maybe
+
+export
+View (FoodEditor) where
+  size = ?hsize
+  paint state window self = ?hpaint
+
+||| Construct a food from a food editor.
+validate : FoodEditor -> Maybe Food
+validate self = do
+  Just $ MkFood
+    !self.name
+    !self.brand
+    !self.barcode
+    !self.nutrition
+
+editor : Food -> FoodEditor
+editor self = MkFood
+  (Just self.name)
+  (Just self.brand)
+  (Just self.barcode)
+  (Just self.nutrition)

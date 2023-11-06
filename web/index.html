@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+  <!-- This is a quick-and-dirty image uploader.  It uses the
+       `capture` attribute of the `<input type="file" />` to trigger
+       the user to snap a photo with the environment camera.
+
+       It will then issue a post request to copy the file back to the
+       originating server -->
+  <head>
+    <meta
+      charset="utf-8"
+      name="viewport"
+      content="width=device-width, height=device-height, initial-scale=1 user-scalable=no"
+    >
+    <title>Image Uploader</title>
+    <style>
+      body {
+	  font-name: "monospace";
+	  font-size: 24pt;
+      }
+      input {
+	  font-size: 24pt;
+      }
+
+      #image {
+	  display: None;
+      }
+
+      #capture {
+	  top: 0;
+	  left: 0;
+	  right: 0;
+	  position: fixed;
+	  display: block;
+	  height: 3em;
+	  width: 100%;
+      }
+
+      #preview {
+	  width: 100%;
+	  height: 100%;
+	  object-fit: contain;
+      }
+
+      #preview-wrapper {
+	  top: 3em;
+	  bottom: 3em;
+	  right: 1em;
+	  left: 1em;
+	  display: block;
+	  position: fixed;
+	  background-color: #CCFFCC;
+      }
+
+      #upload {
+	  bottom: 0;
+	  left: 0;
+	  right: 0;
+	  position: fixed;
+	  display: block;
+	  width: 100%;
+	  height: 3em;
+      }
+
+    </style>
+  </head>
+  <body>
+    <form id="form" method="POST" enctype="multipart/form-data">
+      <input
+	name="image"
+	id="image"
+	type="file"
+	image="upload"
+	accept="image/*"
+	capture="environment"
+	/>
+      <input
+	id="capture"
+	type="button"
+	onclick="image.click()"
+	value="Capture"
+	/>
+      <div>
+      </div>
+      <div id="preview-wrapper">
+	<img id="preview"/>
+      </div>
+      <input id="upload" type="submit" value="Upload"/>
+      <script>
+	document.getElementById("image").addEventListener("change", (evt) => {
+	  const [file] = evt.target.files
+	  document.getElementById("preview").src = URL.createObjectURL(file)
+	});
+
+	async function upload(form) {
+	  const formData = new FormData(form);
+	  try {
+	    const response = await fetch(form.action, {
+	      method: "POST",
+	      body: formData
+	    });
+
+	    if (!response.ok) {
+	      window.alert("error uploading");
+	    }
+	  } catch (e) {
+	    console.error(e);
+	    window.alert("error uploading");
+	  }
+	}
+
+	document.getElementById("form").addEventListener("submit", (evt) => {
+	  evt.preventDefault();
+	  upload(event.target);
+	})
+      </script>
+    </form>
+  </body>
+</html>
