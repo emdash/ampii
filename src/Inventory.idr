@@ -22,6 +22,7 @@ import System.Concurrency
 import Barcode
 import Control.ANSI
 import Date
+import DirDB
 import Food
 import Measures
 import USBScale
@@ -97,6 +98,9 @@ record Container where
   current: Weight
 %runElab derive "Container" [Show,Eq,FromJSON,ToJSON]
 
+
+{- Search --------------------------------------------------------------------}
+
 ||| The different ways we can query the inventory.
 data Query
   = ByBarcode     Barcode
@@ -105,22 +109,20 @@ data Query
   | And           Query Query
   | All
 %runElab derive "Query" [Show, Eq]
+
 ||| An Inventory is a set of containers indexed by their Id
 0 Inventory : Type
 Inventory = SortedMap Id Container
 
-filterInv : (Container -> Bool) -> Inventory -> Inventory
-filterInv f inv = fromList $ filter (f . snd) $ toList inv
+query : Query -> Id -> Container -> Bool
+query (ByBarcode x)    _ c = c.food == x
+query (ExpiresOn x)    _ c = expiresOn x c.life
+query (ByFoodName str) _ c = ?hole
+query (And a b)        i c = (query a i c) && (query b i c)
+query All              _ _ = True
 
-query : Query -> Container -> Bool
-query (ByBarcode x)    c = c.food == x
-query (ExpiresOn x)    c = expiresOn x c.life
-query (ByFoodName str) c = ?hole
-query (And a b)        c = (query a c) && (query b c)
-query All              _ = True
 
 {- Command line parsing ****************************************** -}
-
 
 ||| How to get user input for a value.
 |||
@@ -258,96 +260,86 @@ parse ["delete", id]         = map Delete $ parseId id
 parse _                      = Nothing
 
 
-{- IO ------------------------------------------------------------------------}
+{- Configuration -------------------------------------------------------------}
 
+record Config where
+  constructor MkConfig
+  scale: String
+  db:    Handle Id Container
 
-idToPath : String -> String
-idToPath id = "inventory/\{id}.json"
-
-||| Read a single container entry from the inventory directory
 covering
-readContainer : String -> IO (Either String Container)
-readContainer file = do
-  Right contents <- readFile file | Left _ => pure $ Left "Invalid File Name"
-  case decode contents of
-    Right c => pure $ Right c
-    Left  e => pure $ Left "Corrupt file \{file}: \{show e}"
-
-||| Read the given list of containers from the inventory directory
-covering
-readContainers : List String -> IO (Either String Inventory)
-readContainers [] = pure $ Right empty
-readContainers (file :: files) = do
-  Right cur <- readContainer file
-              | Left _ => pure $ Left "Couldn't read file for item \{file}"
-  Right rest <- readContainers files
-              | Left _ => pure $ Left "Couldn't read rest of the files"
-  pure $ Right $ insert file cur rest
+getConfig : IO Config
+getConfig = do
+  Just scale <- getEnv "AMPII_SCALE_PATH" | Nothing => die "No scale path"
+  Just db    <- getEnv "AMPII_DB_PATH"    | Nothing => die "No database path"
+  Right h    <- connect db                | Left e  => die e
+  pure $ MkConfig scale h
 
 
-||| Open the inventory database at the given path
-covering
-readInventory   : String -> IO (Either String Inventory)
-readInventory path = do
-  Right files <- listDir path | Left _ => pure $ Left "Invalid Path"
-  readContainers $ map ("inventory/" ++) files
+PathSafe String where
+  toPath = id
+  fromPath = id
 
-||| Save the given record to the inventory
-covering
-saveContainer : Id -> Container -> IO Builtin.Unit
-saveContainer file c = do
-  Right _ <- writeFile file (encode c) | Left err => putStrLn (show err)
-  putStrLn "Saved: \{file}"
+Serializable Container where
 
-||| Run the function on the given inventory
-covering
-withInventory : String -> (Inventory -> Inventory) -> IO (Either String Inventory)
-withInventory path f = pure $ map f !(readInventory path)
+Serializable Id where
 
+Row Id Container where
 
 {- Command Processing --------------------------------------------------------}
 
-covering
-runPrompt : String -> Prompt x -> IO x
-runPrompt _ (Direct y) = pure y
-runPrompt device FromScale = case !(getWeight device) of
-  Left  err => die "couldn't read scale"
-  Right weight => pure weight
-runPrompt _ (QueryFood y) = ?runPrompt_rhs_2
-runPrompt _ ChooseFood = ?runPrompt_rhs_3
-runPrompt _ (QueryId y) = ?runPrompt_rhs_4
-runPrompt _ ChooseId = ?runPrompt_rhs_5
+0 Result : Type -> Type
+Result a = IO (Either Error a)
+
+ok : Inventory.Result Builtin.Unit
+ok = pure $ Right ()
+
+fail : Error -> Inventory.Result a
+fail e = pure $ Left e
+
 
 covering
-run : String -> Command -> IO Builtin.Unit
-run path (Search x)  = do
-  Right result <- withInventory "inventory" (filterInv (query x))
-                | Left err => putStrLn "\{show err}"
-  for_ (SortedMap.toList result) $ \(id,c) => putStrLn "\{id}: \{show $ c}"
-run path (Show x)    = do
-  id <- runPrompt path x
-  let file = idToPath id
-  Right cont <- readContainer file | Left err => putStrLn "\{show err}: \{id}"
+runPrompt : Config -> Prompt x -> IO x
+runPrompt cfg (Direct y) = pure y
+runPrompt cfg FromScale = case !(getWeight cfg.scale) of
+  Left  err => die "couldn't read scale"
+  Right weight => pure weight
+runPrompt cfg (QueryFood y) = ?runPrompt_rhs_2
+runPrompt cfg ChooseFood = ?runPrompt_rhs_3
+runPrompt cfg (QueryId y) = ?runPrompt_rhs_4
+runPrompt cfg ChooseId = ?runPrompt_rhs_5
+
+covering
+run : Config -> Command -> Inventory.Result Builtin.Unit
+run cfg (Search q)  = do
+  Right result <- select (query q) cfg.db | Left e => fail e
+  printRows result
+  ok
+run cfg (Show x)    = do
+  id <- runPrompt cfg x
+  Right cont <- readRow cfg.db id | Left e => fail e
   putStrLn $ show cont
-run path (Weigh id w) = do
-  id <- runPrompt path id
-  let file = idToPath id
-  Right cont <- readContainer file | Left err => putStrLn "\{show err}: \{id}"
-  cw <- runPrompt path w
-  saveContainer file $ {current := cw} cont
-run path (Create id bc lt ct ew cw) = do
-  id <- runPrompt path id
-  bc <- runPrompt path bc
-  ew <- runPrompt path ew
-  cw <- runPrompt path cw
-  let file = idToPath id
-  saveContainer file (MkContainer bc lt ct ew cw)
+  ok
+run cfg (Weigh id w) = do
+  id <- runPrompt cfg id
+  Right cont <- readRow cfg.db id | Left e => fail e
+  cw <- runPrompt cfg w
+  Right _ <- writeRow cfg.db id $ {current := cw} cont | Left e => fail e
+  ok
+run cfg (Create id bc lt ct ew cw) = do
+  id <- runPrompt cfg id
+  bc <- runPrompt cfg bc
+  ew <- runPrompt cfg ew
+  cw <- runPrompt cfg cw
+  Right _ <- writeRow cfg.db id $ MkContainer bc lt ct ew cw
+          | Left e => fail e
+  ok
 run _ (Transfer x y) = ?hole_4
-run path (Delete id) = do
-  id <- runPrompt path id
-  let file = idToPath id
-  Right _ <- removeFile file | Left err => putStrLn $ show err
+run cfg (Delete id) = do
+  id <- runPrompt cfg id
+  Right _ <- deleteRow cfg.db id | Left e => fail e
   putStrLn "Deleted: \{id}"
+  ok
 
 
 {- Entry Point ---------------------------------------------------------------}
@@ -357,10 +349,10 @@ run path (Delete id) = do
 partial export
 main : List String -> IO Builtin.Unit
 main args = do
-  Just scale_device_path <- getEnv "AMPII_SCALE_DEVICE"
-                         | Nothing => putStrLn "No scale device"
+  config <- getConfig
   case parse args of
     Nothing => putStrLn "Invalid command: \{unwords args}"
     Just cmd => do
       putStrLn $ show cmd
-      run scale_device_path cmd
+      Right _ <- run config cmd | Left err => die err
+      pure ()

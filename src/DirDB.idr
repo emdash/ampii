@@ -40,7 +40,7 @@ interface PathSafe t where
 
 ||| Interface both primary key and contents must satisfy
 public export
-interface Show k => FromJSON t => ToJSON t => Serializable t where
+interface Show t => FromJSON t => ToJSON t => Serializable t where
 
 
 ||| Interface for a single row in the database
@@ -56,19 +56,19 @@ RowT k v = (k, v)
 
 ||| Type alias for database query results
 public export
-0 Index : (k : Type) -> (v : Type) -> Row k v => Type
-Index k v = SortedMap k v
+0 Table : (k : Type) -> (v : Type) -> Row k v => Type
+Table k v = SortedMap k v
 
 
 ||| A handle to an open database
-export
-record Handle where
+public export
+record Handle (k : Type) (v : Type) where
   constructor New
   path: Path
 
 
 ||| Calculate the record's file name from its id
-idToPath : Row k v => Handle -> k -> Path
+idToPath : Row k v => Handle k v -> k -> Path
 idToPath handle key = "\{handle.path}/\{toPath key}.json"
 
 
@@ -89,7 +89,7 @@ pathsToIds {k, v} (x :: xs) = case pathToId x {k, v} of
 
 ||| Read a single container entry from the inventory directory
 export covering
-readRow : Row k v => Handle -> k -> IO (Either Error v)
+readRow : Row k v => Handle k v -> k -> IO (Either Error v)
 readRow {k, v} handle id = do
   let file = idToPath handle id {k, v}
   Right contents <- readFile file | Left _ => pure $ Left "Invalid File Name"
@@ -100,7 +100,7 @@ readRow {k, v} handle id = do
 
 ||| Read the given list of containers from the inventory directory
 export covering
-readRows : Row k v => Handle -> List k -> IO (Either Error (Index k v))
+readRows : Row k v => Handle k v -> List k -> IO (Either Error (Table k v))
 readRows h [] = pure $ Right empty
 readRows h (id :: ids) = do
   Right cur <- readRow h id
@@ -112,7 +112,7 @@ readRows h (id :: ids) = do
 
 ||| Save the given record to the inventory
 public export covering
-writeRow : Row k v => Handle -> k -> v -> IO (Either Error ())
+writeRow : Row k v => Handle k v -> k -> v -> IO (Either Error ())
 writeRow handle id contents {k, v} = do
   let file     = idToPath handle id {k, v}
   let contents = encode contents
@@ -121,11 +121,15 @@ writeRow handle id contents {k, v} = do
   putStrLn "Saved: \{show id}"
   pure $ Right ()
 
+public export covering
+deleteRow : Row k v => Handle k v -> k -> IO (Either Error ())
+deleteRow = ?hole
+
 
 ||| Read the entire DB at the given path
 public export covering
-readIndex : Row k v => Handle -> IO (Either Error (Index k v))
-readIndex handle = do
+readTable : Row k v => Handle k v -> IO (Either Error (Table k v))
+readTable handle = do
   let path = handle.path
   Right files <- listDir path | Left _ => pure $ Left "Invalid Path"
   readRows handle $ pathsToIds files {k,v}
@@ -133,28 +137,50 @@ readIndex handle = do
 
 ||| Read the entire DB, and call `f` with the result
 public export covering
-withIndex
+withTable
   :  Row k v
-  => Handle
-  -> (Index k v -> Index k v)
-  -> IO (Either Error (Index k v))
-withIndex handle f = pure $ map f !(readIndex handle)
+  => Handle k v
+  -> (Table k v -> r)
+  -> IO (Either Error r)
+withTable handle f = pure $ map f !(readTable handle)
 
 
 ||| Filter a database index with the given predicate.
-filterIndex
+filterTable
   :  Row k v
   => (k -> v -> Bool)
-  -> Index k v
-  -> Index k v
-filterIndex f index = fromList $ filter (uncurry f) $ toList index
+  -> Table k v
+  -> Table k v
+filterTable f index = fromList $ filter (uncurry f) $ toList index
+
+
+||| Print a set of rows to the console
+public export
+printRows : Row k v => Table k v -> IO ()
+printRows rows = for_ (SortedMap.toList rows) printRow
+  where printRow : (k, v) -> IO ()
+        printRow (id, row) = putStrLn "\{show id}: \{show row}"
 
 
 ||| Read the DB, returning those items which satisfy the predicate.
 export covering
-query
+select
   :  Row k v
-  => Handle
-  -> (k -> v -> Bool)
-  -> IO (Either Error (Index k v))
-query handle f = withIndex handle (filterIndex f)
+  => (k -> v -> Bool)
+  -> Handle k v
+  -> IO (Either Error (Table k v))
+select predicate handle = withTable handle (filterTable predicate)
+
+
+||| Check for the existence of the database, returning a handle
+export covering
+connect
+  :  Path
+  -> IO (Either Error (Handle k v))
+connect path = do
+  e <- exists path
+  case e of
+    True  => pure $ Right $ New path
+    False => do
+      Right _ <- createDir path | Left err => pure $ Left $ show err
+      pure $ Left "Directory not found"

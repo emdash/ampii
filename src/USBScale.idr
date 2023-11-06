@@ -21,13 +21,6 @@ import Measures
 %default total
 
 
-
-||| A temporary type alias for units of mass, until I get around to
-||| re-factoring Measures
-public export
-0 Weight : Type
-Weight = Quantity Mass
-
 ||| Move to Utils lib
 debug : Show a => a -> IO Builtin.Unit
 debug value = do
