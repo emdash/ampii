@@ -105,8 +105,6 @@ data Query
   | And           Query Query
   | All
 %runElab derive "Query" [Show, Eq]
-
-
 ||| An Inventory is a set of containers indexed by their Id
 0 Inventory : Type
 Inventory = SortedMap Id Container

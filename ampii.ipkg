@@ -31,6 +31,8 @@ modules = Food
 	, Shopping
 	, Util
 	, Inventory
+	, USBScale
+	, DirDB
 
 -- main file (i.e. file to load at REPL)
 main = Main
