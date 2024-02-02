@@ -10,6 +10,7 @@ import Data.SortedMap
 import Data.String
 import JSON.FromJSON
 import JSON.ToJSON
+import JSON.Derive
 
 import System
 import System.File
@@ -17,7 +18,7 @@ import System.Directory
 
 
 %default total
-
+%language ElabReflection
 
 ||| Type alias for a path-safe string
 public export
@@ -66,6 +67,15 @@ record Handle (k : Type) (v : Type) where
   constructor New
   path: Path
 
+||| A type used to track foreign key references across table joins
+public export
+0 ForeignKey : Type -> Type -> Type
+ForeignKey = Either
+
+public export
+joinForeign : Row k v => ForeignKey k v -> Table k v -> Maybe v
+joinForeign (Left x) t = SortedMap.lookup x t
+joinForeign (Right y) _ = Just y
 
 ||| Calculate the record's file name from its id
 idToPath : Row k v => Handle k v -> k -> Path
@@ -121,9 +131,14 @@ writeRow handle id contents {k, v} = do
   putStrLn "Saved: \{show id}"
   pure $ Right ()
 
+
+||| Remove the given row
 public export covering
 deleteRow : Row k v => Handle k v -> k -> IO (Either Error ())
-deleteRow = ?hole
+deleteRow handle id = do
+  let file = idToPath handle id {k, v}
+  Right _ <- removeFile file | Left _ => pure $ Left "Invalid Path"
+  pure $ Right ()
 
 
 ||| Read the entire DB at the given path
