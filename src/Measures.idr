@@ -58,34 +58,33 @@ import JSON.Derive
 ||| - Volume
 ||| - Density
 |||
-||| Densty = Mass / Volume
+||| Density = Mass / Volume
 public export
 data Dimension
   = Scalar
   | Mass
   | Volume
   | Density
-  | NotImplemented
 %runElab derive "Dimension" [Show, Eq, FromJSON, ToJSON]
 
 
-||| Rules for multiplying quantities
-mul : Dimension -> Dimension -> Dimension
-mul Volume   Density = Mass
-mul Density  Volume  = Mass
-mul Scalar   x       = x
-mul x        Scalar  = x
-mul _        _       = NotImplemented
+||| Static rules for multiplication of dimensions.
+data Mul : (a : Dimension) -> (b : Dimension) -> Dimension -> Type where
+  [search a b]
+  Mr1 : Mul Volume  Density Mass
+  Mr2 : Mul Density Volume  Mass
+  Mr3 : Mul Scalar  x       x
+  Mr4 : Mul x       Scalar  x
 
-||| Rules for dividing quantities
-div : Dimension -> Dimension -> Dimension
-div Scalar Scalar   = Scalar
-div x      Scalar   = x
-div Mass   Volume   = Density
-div Mass   Mass     = Scalar
-div Volume Volume   = Scalar
-div Density Density = Scalar
-div _      _      = NotImplemented
+||| Static rules for division of dimensions.
+data Div : (a : Dimension) -> (b : Dimension) -> Dimension -> Type where
+  [search a b]
+  Dr1 : Div Scalar  Scalar  Scalar
+  Dr2 : Div x       Scalar  x
+  Dr3 : Div Mass    Volume  Density
+  Dr4 : Div Mass    Mass    Scalar
+  Dr5 : Div Volume  Volume  Scalar
+  Dr6 : Div Density Density Scalar
 
 
 ||| The set of units that we support.
@@ -113,13 +112,7 @@ data Unit : Dimension -> Type where
   MilliLiters : Unit Volume
   Liters      : Unit Volume
   GramsPerML  : Unit Density
-%runElab deriveIndexed "Unit" [Eq]
-
-||| Ties off this loose end, and helpful to avoid having to implement
-||| operations on quantities we don't support.
-public export
-Uninhabited (Unit NotImplemented) where
-  uninhabited x impossible
+%runElab deriveIndexed "Unit" [Eq, Ord]
 
 
 ||| Convert a unit to its short form
@@ -143,6 +136,16 @@ public export
   show GramsPerML  = "g/mL"
 
 
+||| An amount of some stuff with an associated unit.
+|||
+||| Quantities are indexed over the dimensionality of the unit.
+public export
+record Quantity (d : Dimension) where
+  constructor Q
+  amount : Double
+  unit   : Unit d
+%runElab deriveIndexed "Quantity" [Eq, Ord]
+
 ||| Table of conversion factors expressed in terms of the base unit.
 conv : Unit d -> Double
 conv S           = 1.0
@@ -162,32 +165,17 @@ conv MilliLiters = 1.0
 conv Liters      = 1000.0
 conv GramsPerML  = 1.0
 
-
-||| An amount of some stuff with an associated unit.
-|||
-||| Quantities are indexed over the dimensionality of the unit.
-public export
-record Quantity (d : Dimension) where
-  constructor Q
-  amount : Double
-  unit   : Unit d
-%runElab deriveIndexed "Quantity" [Eq]
-
-
 ||| Table of base units for the given dimension
 baseUnit : {d : Dimension} -> Unit d
-baseUnit {d = Scalar}         = S
-baseUnit {d = Mass}           = Grams
-baseUnit {d = Volume}         = MilliLiters
-baseUnit {d = Density}        = GramsPerML
--- xxx: is there a way to avoid using `idris_crash` here?
--- I believe that there might be, but anyway...
-baseUnit {d = NotImplemented} = assert_total $ idris_crash "Not Implemented"
+baseUnit {d = Scalar}  = S
+baseUnit {d = Mass}    = Grams
+baseUnit {d = Volume}  = MilliLiters
+baseUnit {d = Density} = GramsPerML
 
 ||| Convert the amount given quantity into the base unit for a given dimension.
 normalize : {d : Dimension} -> Quantity d -> Quantity d
-normalize {d = NotImplemented} x = absurd $ uninhabited x.unit
-normalize {d}                  x = Q (conv x.unit * x.amount) (baseUnit {d})
+normalize (Q amount S) = Q amount S
+normalize (Q amount u) = Q (conv u * amount) baseUnit
 
 ||| Convert a given quantity to the specified unit
 |||
@@ -202,13 +190,12 @@ as x u = Q ((normalize x).amount / (conv u)) u
 ||| must implement this as a function `(*)`, and not via `Num`.
 public export
 (*)
-  :  {a, b : Dimension}
-  -> Quantity a
+  :  {a, b, r : Dimension}
+  -> Mul a b r
+  => Quantity a
   -> Quantity b
-  -> Quantity (a `mul` b)
-(*) {a} {b} x y = Q
-  ((normalize x).amount * (normalize y).amount)
-  (baseUnit {d = a `mul` b})
+  -> Quantity r
+(*) {a} {b} x y = Q ((normalize x).amount * (normalize y).amount) baseUnit
 
 ||| Type-safe division of quantities
 |||
@@ -216,13 +203,12 @@ public export
 ||| must implement this as a function `(/)` and not via `Fractional`.
 public export
 (/)
-  : {a, b : Dimension}
-  -> Quantity a
+  : {a, b, r : Dimension}
+  -> Div a b r
+  => Quantity a
   -> Quantity b
-  -> Quantity (a `div` b)
-(/) {a} {b} x y = Q
-  ((normalize x).amount / (normalize y).amount)
-  (baseUnit {d = a `div` b})
+  -> Quantity r
+(/) {a} {b} x y = Q ((normalize x).amount / (normalize y).amount) baseUnit
 
 ||| Type-safe addition of quantities.
 |||
@@ -230,7 +216,7 @@ public export
 ||| doesn't match the type signature.
 public export
 (+) : {d : Dimension} -> Quantity d -> Quantity d -> Quantity d
-(+) {d} x y = Q ((normalize x).amount + (normalize y).amount) (baseUnit {d})
+(+) x y = Q ((normalize x).amount + (normalize y).amount) baseUnit
 
 ||| Type-safe subtraction of quantities
 |||
@@ -238,12 +224,11 @@ public export
 ||| the meaning of `neg` is for the quantities we support.
 public export
 (-) : {d : Dimension} -> Quantity d -> Quantity d -> Quantity d
-(-) {d} x y = Q ((normalize x).amount - (normalize y).amount) (baseUnit {d})
+(-) x y = Q ((normalize x).amount - (normalize y).amount) baseUnit
 
 ||| Discard unit and convert to a plain double
 public export
-Cast (Quantity d) Double where
-  cast q = q.amount
+Cast (Quantity d) Double where cast q = q.amount
 
 
 {- Convenient abbreviations for working with quantities ******************** -}
@@ -252,6 +237,7 @@ Cast (Quantity d) Double where
 public export
 0 Abr : Dimension -> Type ; Abr d = Double -> Quantity d
 
+public export (.whole): Abr Scalar   ; (.whole) x = Q x S
 public export (.oz)   : Abr Mass   ; (.oz)   x = Q x Ounces
 public export (.lb)   : Abr Mass   ; (.lb)   x = Q x Pounds
 public export (.g)    : Abr Mass   ; (.g)    x = Q x Grams
@@ -271,8 +257,6 @@ public export (.L)    : Abr Volume ; (.L)    x = Q x Liters
 {- Support JSON Deserialization ******************************************** -}
 
 ||| Parse a given unit abbreviation.
-|||
-||| This is meant to be the
 public export
 unitFromString : {d : Dimension} -> String -> Maybe (Unit d)
 unitFromString {d = Scalar} ""     = Just S
@@ -292,7 +276,7 @@ unitFromString {d = Volume} "mL"   = Just MilliLiters
 unitFromString {d = Volume} "L"    = Just Liters
 unitFromString              _      = Nothing
 
-||| Parse a quantity as `amount ++ unit`
+||| Parse a quantity as `amount ++ unit`.
 public export
 quantityFromString : {d : Dimension} -> String -> Maybe (Quantity d)
 quantityFromString {d} str =
@@ -305,13 +289,13 @@ public export
 {d : Dimension} -> Show (Quantity d) where
   show (Q a u) = "\{show a}\{show u}"
 
-||| Parse a unit from a JSON value
+||| Parse a unit from a JSON value.
 parseUnit : {d : Dimension} -> Parser String (Unit d)
 parseUnit u = case (unitFromString u) of
   Nothing => fail "unrecognized unit \{u}"
   Just u  => Right u
 
-||| Parse a quantity from a JSON value
+||| Parse a quantity from a JSON value.
 parseQuantity : {d : Dimension} -> Parser String (Quantity d)
 parseQuantity q = case (quantityFromString q) of
   Nothing => fail "unrecognized quantity \{q}"
@@ -319,7 +303,7 @@ parseQuantity q = case (quantityFromString q) of
 
 public export
 {d : Dimension} -> FromJSON (Unit d) where
-  fromJSON = withString "Unit Mass" parseUnit
+  fromJSON = withString "Unit \{show d}" parseUnit
 
 public export
 {d : Dimension} -> ToJSON (Quantity d) where
@@ -328,3 +312,8 @@ public export
 public export
 {d : Dimension} -> FromJSON (Quantity d) where
   fromJSON = withString "Quantity \{show d}" parseQuantity
+
+||| Short-hand for `Quantity Mass`.
+public export
+0 Weight : Type
+Weight = Quantity Mass
