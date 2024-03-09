@@ -23,7 +23,8 @@ depends = contrib
 	, date
 
 -- modules to install
-modules = Food
+modules = Container
+        , Food
 	, Main
         , Measures
 	, Plan
