@@ -67,24 +67,27 @@ data Dimension
   | Density
 %runElab derive "Dimension" [Show, Eq, FromJSON, ToJSON]
 
+||| This interface allows us to specify the rules for products of dimensions.
+interface Mul (a: Dimension) (b : Dimension) where
+  Product : Dimension
 
-||| Static rules for multiplication of dimensions.
-data Mul : (a : Dimension) -> (b : Dimension) -> Dimension -> Type where
-  [search a b]
-  Mr1 : Mul Volume  Density Mass
-  Mr2 : Mul Density Volume  Mass
-  Mr3 : Mul Scalar  x       x
-  Mr4 : Mul x       Scalar  x
+-- static rules for multiplication of dimensions
+implementation                    Mul Volume  Density where Product = Mass
+implementation                    Mul Density Volume  where Product = Mass
+implementation {x : Dimension} -> Mul Scalar  x       where Product = x
+implementation {x : Dimension} -> Mul x       Scalar  where Product = x
 
-||| Static rules for division of dimensions.
-data Div : (a : Dimension) -> (b : Dimension) -> Dimension -> Type where
-  [search a b]
-  Dr1 : Div Scalar  Scalar  Scalar
-  Dr2 : Div x       Scalar  x
-  Dr3 : Div Mass    Volume  Density
-  Dr4 : Div Mass    Mass    Scalar
-  Dr5 : Div Volume  Volume  Scalar
-  Dr6 : Div Density Density Scalar
+||| This interface allows us to specify the rules for quotients of dimensions.
+interface Div (a : Dimension) (b : Dimension) where
+  Quotient : Dimension
+
+-- static rules for multiplication of dimensions
+implementation                    Div Scalar  Scalar  where Quotient = Scalar
+implementation {x : Dimension} -> Div x       Scalar  where Quotient = x
+implementation                    Div Mass    Volume  where Quotient = Density
+implementation                    Div Mass    Mass    where Quotient = Scalar
+implementation                    Div Volume  Volume  where Quotient = Scalar
+implementation                    Div Density Density where Quotient = Scalar
 
 
 ||| The set of units that we support.
@@ -191,10 +194,10 @@ as x u = Q ((normalize x).amount / (conv u)) u
 public export
 (*)
   :  {a, b, r : Dimension}
-  -> Mul a b r
+  -> (canMul : Mul a b)
   => Quantity a
   -> Quantity b
-  -> Quantity r
+  -> Quantity (Product @{canMul})
 (*) {a} {b} x y = Q ((normalize x).amount * (normalize y).amount) baseUnit
 
 ||| Type-safe division of quantities
@@ -204,10 +207,10 @@ public export
 public export
 (/)
   : {a, b, r : Dimension}
-  -> Div a b r
+  -> (canDiv : Div a b)
   => Quantity a
   -> Quantity b
-  -> Quantity r
+  -> Quantity (Quotient @{canDiv})
 (/) {a} {b} x y = Q ((normalize x).amount / (normalize y).amount) baseUnit
 
 ||| Type-safe addition of quantities.
