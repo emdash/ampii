@@ -18,15 +18,18 @@
 
 module Main
 
-
 import System
 import Inventory
 import USBScale
+import Zipper
+import TUI
+
 
 partial
 dispatch : String -> List String -> IO ()
 dispatch "inventory" rest = Inventory.main rest
 dispatch "scale"     rest = USBScale.main rest
+dispatch "zipper"    _    = runTUI Zipper.test (Nothing, Zipper.init)
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
 partial
@@ -37,3 +40,4 @@ main = do
     []              => putStrLn "Impossible"
     [_]             => putStrLn "No subcommand"
     _ :: sc :: rest => dispatch sc rest
+
