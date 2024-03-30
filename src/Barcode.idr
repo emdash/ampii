@@ -52,7 +52,7 @@ parseBarcode s = case forget $ split (':' ==) s of
   ["EAN13", r] => EAN13 <$> parseVect r
   ["UPC", r]   => UPC   <$> parseVect r
   ["USER", r]  => USER  <$> parseVect r
-  _           => fail "Invalid barcode: \{s}"
+  _            => fail "Invalid barcode: \{s}"
 
 ||| Implement JSON Deserialization
 export
@@ -67,3 +67,14 @@ fromDigits s = case length s of
   12 => map UPC   $ toVect 12 $ unpack s
   13 => map EAN13 $ toVect 13 $ unpack s
   _  => Nothing
+
+
+||| Allow static strings to decode automatically to barcodes.
+|||
+||| This is useful for testing and in the REPL, but it will crash if
+||| parsing fails.
+public export partial
+fromString : String -> Barcode
+fromString s = case fromDigits s of
+  Nothing => idris_crash "Not a valid barcode"
+  Just b  => b

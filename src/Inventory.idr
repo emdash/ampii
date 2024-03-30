@@ -7,7 +7,6 @@
 ||| containers of food.
 module Inventory
 
-
 import Data.List1
 import Data.Vect
 import Data.SortedMap
@@ -59,10 +58,6 @@ data Query
   | And           Query Query
   | All
 %runElab derive "Query" [Show, Eq]
-
-||| An Inventory is a set of containers indexed by their Id
-0 Inventory : Type
-Inventory = SortedMap Id Raw.Container
 
 ||| A predicate, which returns true if the query matches on the given
 ||| container.

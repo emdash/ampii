@@ -32,6 +32,9 @@ import JSON
 %language ElabReflection
 
 
+-- XXX: contribute these implementations upstream to the JSON package,
+-- and then the following can be removed.
+
 ToJSON a => ToJSON (SortedSet a) where
   toJSON = toJSON . SortedSet.toList
 
@@ -44,10 +47,13 @@ Ord a => FromJSON a => FromJSON (SortedSet a) where
 Ord a => FromJSON a => FromJSON (SortedMap String a) where
   fromJSON x = SortedMap.fromList <$> fromJSON x
 
+-- XXX to here.
+
 
 ||| Nutritional data
 public export
 record Nutrition where
+  constructor N
   servingSize : Weight
   values : SortedMap String Weight
 %runElab derive "Nutrition" [Show, Eq, ToJSON, FromJSON]
@@ -56,11 +62,9 @@ record Nutrition where
 ||| Data regarding a particular kind of food.
 public export
 record Food where
+  constructor MkFood
   name:         String
   brand:        Maybe String
   barcode:      Barcode
   nutrition:    Nutrition
-  imagePath:    String
-  sources:      SortedSet String
-
 %runElab derive "Food" [Show, Eq, ToJSON, FromJSON]
