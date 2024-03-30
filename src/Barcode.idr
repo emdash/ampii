@@ -16,7 +16,7 @@ data Barcode
   = EAN13 (Vect 13 Char)
   | UPC   (Vect 12 Char)
   | USER  (Vect 4  Char)
-%runElab derive "Barcode" [Eq,Ord]
+%runElab derive "Barcode" [Eq,Ord, FromJSON, ToJSON]
 
 export
 Show Barcode where

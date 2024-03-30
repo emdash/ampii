@@ -25,22 +25,42 @@ import Measures
 import Barcode
 import Data.SortedMap
 import Data.SortedSet
-
+import JSON.Derive
+import JSON
 
 %default total
+%language ElabReflection
 
 
+ToJSON a => ToJSON (SortedSet a) where
+  toJSON = toJSON . SortedSet.toList
+
+ToJSON a => ToJSON (SortedMap String a) where
+  toJSON x = object $ map (mapSnd toJSON) $ SortedMap.toList x
+
+Ord a => FromJSON a => FromJSON (SortedSet a) where
+  fromJSON x = SortedSet.fromList <$> fromJSON x
+
+Ord a => FromJSON a => FromJSON (SortedMap String a) where
+  fromJSON x = SortedMap.fromList <$> fromJSON x
+
+
+||| Nutritional data
+public export
+record Nutrition where
+  servingSize : Weight
+  values : SortedMap String Weight
+%runElab derive "Nutrition" [Show, Eq, ToJSON, FromJSON]
+
+
+||| Data regarding a particular kind of food.
 public export
 record Food where
   name:         String
-  servingSize:  Quantity  Mass
-  nutrition:    SortedMap String Double
+  brand:        Maybe String
+  barcode:      Barcode
+  nutrition:    Nutrition
   imagePath:    String
   sources:      SortedSet String
-  substitutes:  SortedSet Barcode
 
-
-public export
-0 FoodDB : Type
-FoodDB = SortedMap Barcode Food
-
+%runElab derive "Food" [Show, Eq, ToJSON, FromJSON]

@@ -20,6 +20,7 @@ import System.Directory
 %default total
 %language ElabReflection
 
+
 ||| Type alias for a path-safe string
 public export
 0 Path : Type
@@ -39,9 +40,22 @@ interface PathSafe t where
   fromPath : Path -> t
 
 
+||| XXX: this should do some proper string escaping, but I don't want
+||| to follow this rabbit hole right now.
+public export
+PathSafe String where
+  toPath = id
+  fromPath = id
+
+
 ||| Interface both primary key and contents must satisfy
 public export
 interface Show t => FromJSON t => ToJSON t => Serializable t where
+
+
+||| Blanket implementation, otherwise we'd have to specify it for every type.
+public export
+implementation Show t => FromJSON t => ToJSON t => Serializable t where
 
 
 ||| Interface for a single row in the database
@@ -61,21 +75,58 @@ public export
 Table k v = SortedMap k v
 
 
+||| Defines a foreign key relationship between two tables.
+|||
+||| Client code must specify the the type of the join result, a
+||| function which projects the foreign key, and a function which
+||| joins the the two values.
+public export
+interface
+  Row k1 v1 =>
+  Row k2 v2 =>
+  ForeignKey k1 v1 k2 v2
+where
+  0 JoinResult : Type
+  foreignKey : v1 -> k2
+  joinValue  : v1 -> v2 -> JoinResult
+
+
+||| Helper function which handles joining a single row in the source
+||| table.
+|||
+||| If the foreign key isn't present in its source table, the result
+||| is omitted from the join.
+joinRow
+  :  (fk : ForeignKey k1 v1 k2 v2)
+  => SortedMap k2 v2
+  -> SortedMap k1 (JoinResult @{fk})
+  -> (k1, v1)
+  -> SortedMap k1 (JoinResult @{fk})
+joinRow source dest (k, v1) =
+  case SortedMap.lookup (foreignKey @{fk} v1) source of
+    Nothing => dest
+    Just v  => insert k (joinValue v1 v) dest
+
+
+||| Join two tables together.
+joinTable
+  :  (fk : ForeignKey k1 v1 k2 v2)
+  => Table k1 v1
+  -> Table k2 v2
+  -> SortedMap k1 (JoinResult @{fk})
+joinTable t1 t2 = foldl {
+  func  = joinRow t2,
+  init  = empty,
+  input = toList t1
+}
+
+
 ||| A handle to an open database
 public export
 record Handle (k : Type) (v : Type) where
   constructor New
   path: Path
 
-||| A type used to track foreign key references across table joins
-public export
-0 ForeignKey : Type -> Type -> Type
-ForeignKey = Either
-
-public export
-joinForeign : Row k v => ForeignKey k v -> Table k v -> Maybe v
-joinForeign (Left x) t = SortedMap.lookup x t
-joinForeign (Right y) _ = Just y
 
 ||| Calculate the record's file name from its id
 idToPath : Row k v => Handle k v -> k -> Path
@@ -185,6 +236,22 @@ select
   -> Handle k v
   -> IO (Either Error (Table k v))
 select predicate handle = withTable handle (filterTable predicate)
+
+
+||| Join two tables for which a foreign key relationship is defined.
+export covering
+join
+  :  (fk : ForeignKey k1 v1 k2 v2)
+  => Row k1 v1
+  => Row k2 v2
+  => (k1 -> JoinResult @{fk} -> Bool)
+  -> Handle k1 v1
+  -> Handle k2 v2
+  -> IO (Either Error (SortedMap k1 (JoinResult @{fk})))
+join f h1 h2 = do
+  Right t1 <- readTable h1 | Left err => pure $ Left err
+  Right t2 <- readTable h2 | Left err => pure $ Left err
+  pure $ Right $ fromList $ filter (uncurry f) $ toList $ joinTable t1 t2
 
 
 ||| Check for the existence of the database, returning a handle

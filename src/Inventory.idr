@@ -31,7 +31,25 @@ import USBScale
 %language ElabReflection
 
 
+namespace Raw
+  public export
+  0 Container : Type
+  Container = Container.Container Barcode
+
+namespace Joined
+  public export
+  0 Container : Type
+  Container = Container.Container Food
+
+
 {- Search --------------------------------------------------------------------}
+
+||| Returns true if the two strings kinda match.
+|||
+||| XXX: do something better here. For now this just returns whether
+||| the needle is a substring of the haystack.
+fuzzyMatch : String -> String -> Bool
+fuzzyMatch needle haystack = isInfixOf needle haystack
 
 ||| The different ways we can query the inventory.
 data Query
@@ -44,14 +62,16 @@ data Query
 
 ||| An Inventory is a set of containers indexed by their Id
 0 Inventory : Type
-Inventory = SortedMap Id Container
+Inventory = SortedMap Id Raw.Container
 
-query : Query -> Id -> Container -> Bool
-query (ByBarcode x)    _ c = c.food == x
-query (ExpiresOn x)    _ c = expiresOn x c.life
-query (ByFoodName str) _ c = ?hole
-query (And a b)        i c = (query a i c) && (query b i c)
-query All              _ _ = True
+||| A predicate, which returns true if the query matches on the given
+||| container.
+query : Query -> Id -> Joined.Container -> Bool
+query (ByBarcode x)  id c = id == show x || c.food.barcode == x
+query (ExpiresOn x)  _ c = expiresOn x c.life
+query (ByFoodName n) _ c = fuzzyMatch n c.food.name
+query (And a b)      i c = (query a i c) && (query b i c)
+query All            _ _ = True
 
 
 {- Command line parsing ****************************************** -}
@@ -194,29 +214,46 @@ parse _                      = Nothing
 
 {- Configuration -------------------------------------------------------------}
 
+||| Declare table of food records.
+Row Id Food where
+
+||| Declare table of container records.
+Row Id (Raw.Container) where
+
+||| Declare the foreign-key relationship between containers and foods.
+|||
+||| XXX: This could be automated with idris-sop.
+ForeignKey Id Raw.Container Id Food where
+  JoinResult           = Joined.Container
+  foreignKey cont      = show cont.food
+  joinValue  cont food = MkContainer {
+    food    = food,
+    life    = cont.life,
+    type    = cont.type,
+    empty   = cont.empty,
+    current = cont.current
+  }
+
+||| Declare the row type after the above join
+Row Id Joined.Container where
+
+||| This is the config for our inventory database.
 record Config where
   constructor MkConfig
-  scale: String
-  db:    Handle Id Container
+  scale      : String
+  foods      : Handle Id Food
+  containers : Handle Id Raw.Container
 
+||| Construct the configuration from environment variables.
 covering
 getConfig : IO Config
 getConfig = do
   Just scale <- getEnv "AMPII_SCALE_PATH" | Nothing => die "No scale path"
   Just db    <- getEnv "AMPII_DB_PATH"    | Nothing => die "No database path"
-  Right h    <- connect db                | Left e  => die e
-  pure $ MkConfig scale h
+  Right f    <- connect "\{db}/food"      | Left e  => die e
+  Right c    <- connect "\{db}/container" | Left e  => die e
+  pure $ MkConfig scale f c
 
-
-PathSafe String where
-  toPath = id
-  fromPath = id
-
-Serializable Container where
-
-Serializable Id where
-
-Row Id Container where
 
 {- Command Processing --------------------------------------------------------}
 
@@ -244,32 +281,32 @@ runPrompt cfg ChooseId = ?runPrompt_rhs_5
 covering
 run : Config -> Command -> Inventory.Result Builtin.Unit
 run cfg (Search q)  = do
-  Right result <- select (query q) cfg.db | Left e => fail e
+  Right result <- join (query q) cfg.containers cfg.foods | Left e => fail e
   printRows result
   ok
 run cfg (Show x)    = do
   id <- runPrompt cfg x
-  Right cont <- readRow cfg.db id | Left e => fail e
+  Right cont <- readRow cfg.containers id | Left e => fail e
   putStrLn $ show cont
   ok
 run cfg (Weigh id w) = do
   id <- runPrompt cfg id
-  Right cont <- readRow cfg.db id | Left e => fail e
+  Right cont <- readRow cfg.containers id | Left e => fail e
   cw <- runPrompt cfg w
-  Right _ <- writeRow cfg.db id $ {current := cw} cont | Left e => fail e
+  Right _ <- writeRow cfg.containers id $ {current := cw} cont | Left e => fail e
   ok
 run cfg (Create id bc lt ct ew cw) = do
   id <- runPrompt cfg id
   bc <- runPrompt cfg bc
   ew <- runPrompt cfg ew
   cw <- runPrompt cfg cw
-  Right _ <- writeRow cfg.db id $ MkContainer bc lt ct ew cw
+  Right _ <- writeRow cfg.containers id $ MkContainer bc lt ct ew cw
           | Left e => fail e
   ok
 run _ (Transfer x y) = ?hole_4
 run cfg (Delete id) = do
   id <- runPrompt cfg id
-  Right _ <- deleteRow cfg.db id | Left e => fail e
+  Right _ <- deleteRow cfg.containers id | Left e => fail e
   putStrLn "Deleted: \{id}"
   ok
 

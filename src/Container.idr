@@ -63,7 +63,9 @@ data ContainerType
   | Reusable
 %runElab derive "ContainerType" [Show,Eq,FromJSON,ToJSON]
 
-||| A single container of a given food.
+
+
+||| Abstract container of a given food.
 |||
 ||| Each container has a unique numeric ID. The ID is arbitrarily
 ||| chosen by the user.
@@ -73,10 +75,12 @@ data ContainerType
 |||
 ||| For each container, we track its lifetime, empty weight, and
 ||| current weight.
+|||
+||| The record is parametric over how food is represented.
 public export
-record Container where
+record Container foodT where
   constructor MkContainer
-  food:    Barcode
+  food:    foodT
   life:    LifeTime
   type:    ContainerType
   empty:   Weight
