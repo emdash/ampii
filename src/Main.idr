@@ -29,7 +29,7 @@ partial
 dispatch : String -> List String -> IO ()
 dispatch "inventory" rest = Inventory.main rest
 dispatch "scale"     rest = USBScale.main rest
-dispatch "zipper"    _    = runTUI Zipper.test (Nothing, Zipper.init)
+dispatch "editor"    _    = TUI.test
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
 partial

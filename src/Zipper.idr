@@ -1,4 +1,3 @@
-
 ||| Application-specific zipper for JSON data
 |||
 ||| Based on:
@@ -21,6 +20,7 @@ data Tree item
   = Item    item
   | Section (List $ Tree item)
 %runElab derive "Tree" [Show]
+
 
 ||| Huet's generic tree path
 |||
@@ -85,6 +85,7 @@ goLeft (Loc t p) = case p of
   Top                       => Left "Left of Top"
   Node (l :: left) up right => Right $ Loc l $ Node left up $ t :: right
   Node []          up right => Left "Left of First"
+
 
 
 ||| Move the zipper to the right.
@@ -176,3 +177,5 @@ test Left      (_, cursor) = Just $ ignoreErrs cursor $ goLeft  cursor
 test Up        (_, cursor) = Just $ ignoreErrs cursor $ goUp    cursor
 test Down      (_, cursor) = Just $ ignoreErrs cursor $ goDown  cursor
 test Delete    (_, cursor) = Just $ ignoreErrs cursor $ delete cursor
+test Enter     (_, cursor) = Just $ (Nothing, cursor)
+test Tab       (_, cursor) = Just $ (Nothing, cursor)
