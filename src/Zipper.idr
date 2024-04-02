@@ -179,3 +179,4 @@ test Down      (_, cursor) = Just $ ignoreErrs cursor $ goDown  cursor
 test Delete    (_, cursor) = Just $ ignoreErrs cursor $ delete cursor
 test Enter     (_, cursor) = Just $ (Nothing, cursor)
 test Tab       (_, cursor) = Just $ (Nothing, cursor)
+test Escape    (_, cursor) = Nothing
