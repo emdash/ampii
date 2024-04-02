@@ -141,6 +141,11 @@ namespace Geometry
     y : Nat
   %runElab derive "Pos" [Eq, Ord, Show]
 
+  ||| Top-left screen corner
+  public export
+  origin : Pos
+  origin = MkPos 0 1
+
   ||| The dimensions of a screen view
   public export
   record Area where
@@ -272,7 +277,7 @@ namespace Geometry
   ||| A common default size of terminal window.
   public export
   r80x24 : Rect
-  r80x24 = MkRect (MkPos 0 0) (MkArea 80 24)
+  r80x24 = MkRect (MkPos 0 1) (MkArea 80 24)
 
 
 ||| Functions and related to putting text on the screen
@@ -304,21 +309,33 @@ namespace Painting
   hideCursor : IO ()
   hideCursor = putStr "\ESC[?25l"
 
+  ||| Save the cursor state and position.
+  |||
+  ||| The standard only supports one level of save / restore. This
+  ||| should be called once at application start.
   export
   saveCursor : IO ()
   saveCursor = putStr "\ESC7"
 
+  ||| Save the cursor state and position.
+  |||
+  ||| The standard only supports one level of save / restore. This
+  ||| should be called once at application end.
   export
   restoreCursor : IO ()
   restoreCursor = putStr "\ESC8"
 
+  ||| This attribute isn't part of the ANSI library in contrib, but is
+  ||| arguably more useful than setting explicit colors.
   export
   reverseVideo : IO ()
   reverseVideo = putStr "\ESC[7m"
 
+  ||| effectful version for setting arbitrary SGR attributes
   export
   sgr : List SGR -> IO ()
   sgr = putStr . escapeSGR
+
 
 ||| A view is a high-level UI component.
 |||
@@ -431,20 +448,18 @@ namespace ViewList
       loop : Nat -> Nat -> Rect -> ViewList _ -> IO ()
       loop _ _ _ End = pure ()
       loop i split r (Field s x y) = do
-        let (left, right) = hsplit r (split + 4)
-        if i == focus
-          then paint left (bolden s)
-          else paint @{string} left s
-        let vsep = if i == focus then ">" else "|"
-        showTextAt (MkPos (split + 2) r.n) "|"
+        let (top, bottom) = vsplit r (size x).height
+        let (left, right) = hsplit top (split + 4)
         if i == focus
           then do
-            saveCursor
             reverseVideo
-            paint right x
-            restoreCursor
-          else paint right x
-        loop (S i) split (snd $ vsplit r ((height (size x)) + 1) ) y
+            showTextAt left.nw s
+            sgr [Reset]
+          else
+            showTextAt left.nw s
+        showTextAt (MkPos (split + 2) r.n) "|"
+        paint right x
+        loop (S i) split bottom y
 
   ||| Dispatch keyboard input to the currently-focused subview.
   export
@@ -524,6 +539,119 @@ namespace Menu
   menu : {k : Nat} -> View a => Vect (S k) a -> Menu a
   menu {k} choices = MkMenu (S k) choices (natToFinLt 0)
 
+
+||| An editable string
+export
+record TextInput where
+  constructor MkTextInput
+
+  ||| Tracks whether we are editing or not
+  active : Bool
+
+  ||| Characters left of the cursor. The tail of this list is the
+  ||| insertion point.
+  left   : SnocList Char
+
+  ||| Characters right of the cursor.
+  right  : List Char
+
+namespace TextInput
+  kcapnu : String -> SnocList Char
+  kcapnu s = cast $ unpack s
+
+  kcap : SnocList Char -> String
+  kcap s = pack $ cast s
+
+  liat : SnocList a -> SnocList a
+  liat [<] = [<]
+  liat (xs :< x) = xs
+
+  daeh : SnocList a -> Maybe a
+  daeh [<] = Nothing
+  daeh (xs :< x) = Just x
+
+  head : List a -> Maybe a
+  head [] = Nothing
+  head (x :: xs) = Just x
+
+  tail : List a -> List a
+  tail [] = []
+  tail (x :: xs) = xs
+
+  fromString : String -> TextInput
+  fromString s = MkTextInput {
+    active = False,
+    left   = kcapnu s,
+    right  = []
+  }
+
+  toString : TextInput -> String
+  toString self = (kcap self.left) ++ (pack self.right)
+
+  ||| Insert a character.
+  insert : Char -> TextInput -> TextInput
+  insert c = { left $= (:< c) }
+
+  ||| Delete a character.
+  export
+  delete : TextInput -> TextInput
+  delete = { left $= liat }
+
+  ||| Move insertion point rightward
+  goRight : TextInput -> TextInput
+  goRight self = case self.right of
+    []      => self
+    x :: xs => {
+      left  $= (:< x),
+      right := xs
+    } self
+
+  ||| Move insertion point rightward
+  goLeft : TextInput -> TextInput
+  goLeft self = case self.left of
+    [<]     => self
+    xs :< x => {
+      left  := xs,
+      right $= (x ::)
+    } self
+
+  ||| Implement View for TextInput
+  export
+  View TextInput where
+    -- Text view wraps a string value
+    Value = String
+    value = toString
+
+    -- Size is the sum of left and right halves
+    size self = MkArea ((length self.left) + (length self.right)) 1
+
+    paint rect self = case self.active of
+      False => do
+        showTextAt rect.nw (value self)
+      True  => do
+        moveTo rect.nw
+        putStr $ kcap $ self.left
+        reverseVideo
+        putStr $ case self.right of
+          [] => " "
+          x :: _ => pack [x]
+        sgr [Reset]
+        putStr $ pack $ tail self.right
+
+    handle key self = case self.active of
+      -- ignore events when inactive
+      False => case key of
+        Enter => { active := True } self
+        _     => self
+      -- map typical keys to expected functions
+      True  => case key of
+        Enter   => { active := False } self
+        Escape  => { active := False } self
+        Left    => goLeft self
+        Right   => goRight self
+        Delete  => delete self
+        Alpha c => insert c self
+        _       => self
 
 ||| A form displays a set of views, each with a string label.
 |||
@@ -664,14 +792,21 @@ where
 testMenu : Menu String
 testMenu = menu ["foo", "bar", "baz"]
 
-testViewList : ViewList (Menu String, (Menu String, ()))
-testViewList = Field "F1" testMenu $ Field "Long name" testMenu End
+testViewList : ViewList (Menu String, (Menu String, (TextInput, (TextInput, ()))))
+testViewList =
+  Field "F1" testMenu
+  $ Field "Long name" testMenu
+  $ Field "Text Input" (fromString "test")
+  $ Field "Test" (fromString "test")
+  $ End
 
-testForm : Form (Menu String, (Menu String, ()))
+testForm : Form (Menu String, (Menu String, (TextInput, (TextInput, ()))))
 testForm = MkForm {
   views = testViewList,
   choice = 0
 }
+
+withSave : Lazy (IO ()) -> IO ()
 
 partial export
 test : IO ()
