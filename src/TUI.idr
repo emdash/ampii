@@ -46,8 +46,36 @@ namespace Util
   ||| Decrement the given `Fin` without changing the bound.
   public export
   pred : Fin n -> Fin n
-  pred FZ = FZ
+  pred FZ     = FZ
   pred (FS k) = weaken k
+
+  ||| `unpack`, but for SnocLists
+  public export
+  kcapnu : String -> SnocList Char
+  kcapnu s = cast $ unpack s
+
+  ||| `pack`, but for SnocLists
+  public export
+  kcap : SnocList Char -> String
+  kcap s = pack $ cast s
+
+  ||| `tail` for SnocList
+  public export
+  liat : SnocList a -> SnocList a
+  liat [<] = [<]
+  liat (xs :< x) = xs
+
+  ||| `head` for SnocList
+  public export
+  daeh : SnocList a -> Maybe a
+  daeh [<] = Nothing
+  daeh (xs :< x) = Just x
+
+  ||| Return the tail part of a regular list.
+  public export
+  tail : List a -> List a
+  tail [] = []
+  tail (x :: xs) = xs
 
 
 ||| Functions and types having to do with terminal escape sequences.
@@ -106,7 +134,6 @@ namespace EscapeSequences
   decodeEsc [< '\ESC']   = Just $ Just Escape
   decodeEsc _            = Nothing
 
-
   ||| Interpret console escape sequences as keys.
   |||
   ||| Note: this falls down if the user presses the escape key, because
@@ -144,7 +171,7 @@ namespace Geometry
   ||| Top-left screen corner
   public export
   origin : Pos
-  origin = MkPos 0 1
+  origin = MkPos 1 1
 
   ||| The dimensions of a screen view
   public export
@@ -275,9 +302,28 @@ namespace Geometry
       (<+>) = union
 
   ||| A common default size of terminal window.
-  public export
+  export
   r80x24 : Rect
-  r80x24 = MkRect (MkPos 0 1) (MkArea 80 24)
+  r80x24 = MkRect origin (MkArea 80 24)
+
+  ||| shrink the rectangle by the given size
+  export
+  inset : Rect -> Area -> Rect
+  inset (MkRect (MkPos x y) (MkArea width height)) offset = MkRect {
+    pos = MkPos {
+      x = (x + offset.width),
+      y = (y + offset.height)
+    },
+    size = MkArea {
+      width = (width `minus` 2 * offset.width),
+      height = (height `minus` 2 * offset.height)
+    }
+  }
+
+  ||| Inset a rectangle uniformly by one row and column.
+  export
+  shrink : Rect -> Rect
+  shrink r = inset r $ MkArea 1 1
 
 
 ||| Functions and related to putting text on the screen
@@ -293,6 +339,11 @@ namespace Painting
   showTextAt pos x = do
     moveTo pos
     putStr x
+
+  ||| Draw a single character at the given point.
+  export
+  showCharAt : Pos -> Char -> IO ()
+  showCharAt pos x = showTextAt pos (singleton x)
 
   ||| Clear the contents of the screen via ANSI codes.
   export
@@ -331,53 +382,114 @@ namespace Painting
   reverseVideo : IO ()
   reverseVideo = putStr "\ESC[7m"
 
+  ||| Undoes the above
+  export
+  unreverseVideo : IO ()
+  unreverseVideo = putStr "\ESC[27m"
+
   ||| effectful version for setting arbitrary SGR attributes
   export
   sgr : List SGR -> IO ()
   sgr = putStr . escapeSGR
 
+  ||| Symbolic type for box drawing characters
+  public export
+  data BoxChar
+    = NW
+    | NE
+    | SW
+    | SE
+    | H
+    | V
 
-||| A view is a high-level UI component.
-|||
-||| - It wraps an inner value, its state.
-||| - It knows how to size itself, for layout purposes.
-||| - It can draw itself to the screen
-||| - It can update its state in response to events.
-public export
-interface View state where
-  ||| The value of this view type.
-  0 Value : Type
-  Value = state
+  ||| Draw the corresponding box character
+  export
+  boxChar : Pos -> BoxChar -> IO ()
+  boxChar pos NW = showCharAt pos $ cast 0x250C
+  boxChar pos NE = showCharAt pos $ cast 0x2510
+  boxChar pos SW = showCharAt pos $ cast 0x2514
+  boxChar pos SE = showCharAt pos $ cast 0x2518
+  boxChar pos H  = showCharAt pos $ cast 0x2500
+  boxChar pos V  = showCharAt pos $ cast 0x2502
 
-  ||| Get the current value of the view
+  ||| Draw a horizontal line
+  export
+  hline : Pos -> Nat -> IO ()
+  hline pos@(MkPos x y) width = do
+    boxChar pos H
+    case width of
+      Z   => pure ()
+      S n => hline (MkPos (S x) y) n
+
+  ||| Draw a vertical line
+  export
+  vline : Pos -> Nat -> IO ()
+  vline pos@(MkPos x y) height = do
+    boxChar pos V
+    case height of
+      Z   => pure ()
+      S n => vline (MkPos x (S y)) n
+
+  ||| Draw a box around the given rectangle
   |||
-  ||| This is so a stateful widget can project its inner value.  an
-  ||| inner value.
-  value : state -> Value
-
-  ||| Calculate the "requested" size
-  size  : state -> Area
-
-  ||| Draw the view into the given screen rectangle.
-  paint : Rect -> state -> IO ()
-
-  ||| Possibly update our state in response to a key press.
-  |||
-  ||| The default implementation is a no-op. Override this for
-  ||| stateful view.
-  handle : Key -> state -> state
-  handle _ s = s
+  ||| Use with `shrink` or `inset` to layout contents within the frame.
+  export
+  box : Rect -> IO ()
+  box r = do
+    -- draw the lines at full size
+    hline r.nw r.size.width
+    hline r.sw r.size.width
+    vline r.nw r.size.height
+    vline r.ne r.size.height
+    -- paint over with the corners
+    boxChar r.nw NW
+    boxChar r.ne NE
+    boxChar r.sw SW
+    boxChar r.se SE
 
 
 ||| Associated definitions `View`.
 namespace View
+  public export
+  data State = Normal | Focused | Disabled
+
+  ||| A view is a high-level UI component.
+  |||
+  ||| - It wraps an inner value, its state.
+  ||| - It knows how to size itself, for layout purposes.
+  ||| - It can draw itself to the screen
+  ||| - It can update its state in response to events.
+  public export
+  interface View state where
+    ||| The value of this view type.
+    0 Value : Type
+    Value = state
+
+    ||| Get the current value of the view
+    |||
+    ||| This is so a stateful widget can project its inner value.  an
+    ||| inner value.
+    value : state -> Value
+
+    ||| Calculate the "requested" size
+    size  : state -> Area
+
+    ||| Draw the view into the given screen rectangle.
+    paint : View.State -> Rect -> state -> IO ()
+
+    ||| Possibly update our state in response to a key press.
+    |||
+    ||| The default implementation is a no-op. Override this for
+    ||| stateful view.
+    handle : Key -> state -> state
+    handle _ s = s
 
   ||| Implement `View` for `()` as a no-op
   export
   View () where
-    size  _   = MkArea 0 0
-    paint _ _ = pure ()
-    value     = id
+    size  _     = MkArea 0 0
+    paint _ _ _ = pure ()
+    value       = id
 
   ||| Any type implementing `Show` is automatically a (non-interative)
   ||| view.
@@ -386,7 +498,7 @@ namespace View
     Value = a
     value = id
     size s = MkArea (length (show s)) 1
-    paint r s = showTextAt r.nw (show s)
+    paint _ r s = showTextAt r.nw (show s)
 
   ||| In implementing `View` for all `Show` types, we have
   ||| inadvertently made it ambigious what to do when we use a string
@@ -396,7 +508,7 @@ namespace View
   [string] View String where
     value = id
     size s = MkArea (length s) 1
-    paint r = showTextAt r.nw
+    paint _ r = showTextAt r.nw
 
 
 ||| A heterogenous list of views.
@@ -412,7 +524,7 @@ data ViewList : Type -> Type where
 
 ||| Associated definitions for `ViewList`
 namespace ViewList
-  ||| Project the values out of the ViewList as a tuple.
+  ||| XXX: this is kinda broken
   export
   values : ViewList ty -> ty
   values End = ()
@@ -443,22 +555,27 @@ namespace ViewList
   ||| Render the view-list along a vertical axis.
   export
   paintVertical : Nat -> Rect -> ViewList _ -> IO ()
-  paintVertical focus r l = loop 0 (labelSplit l) r l
+  paintVertical focus r l = do
+    let split = (labelSplit l)
+    vline (MkPos (r.w + split + 1) r.n) (r.size.height)
+    loop 0 split r l
     where
       loop : Nat -> Nat -> Rect -> ViewList _ -> IO ()
       loop _ _ _ End = pure ()
       loop i split r (Field s x y) = do
         let (top, bottom) = vsplit r (size x).height
-        let (left, right) = hsplit top (split + 4)
+        let (left, right) = hsplit top (split + 3)
+
         if i == focus
           then do
-            reverseVideo
+            sgr [SetStyle SingleUnderline]
             showTextAt left.nw s
             sgr [Reset]
-          else
+            paint Focused right x
+          else do
             showTextAt left.nw s
-        showTextAt (MkPos (split + 2) r.n) "|"
-        paint right x
+            paint Normal right x
+
         loop (S i) split bottom y
 
   ||| Dispatch keyboard input to the currently-focused subview.
@@ -526,9 +643,14 @@ namespace Menu
       let width = foldl max 0 $ map (width . size) self.choices
       in MkArea (width + 2) $ height $ size $ index self.choice self.choices
 
-    paint rect self = do
-      paint (snd $ hsplit rect 2) (index self.choice self.choices)
+    paint state rect self = do
+      case state of
+        Focused => reverseVideo
+        Disabled => sgr [SetStyle Faint]
+        _ => sgr [Reset]
+      paint state (snd $ hsplit rect 2) (index self.choice self.choices)
       showTextAt rect.nw (arrowForIndex {k = self.n} self.choice)
+      sgr [Reset]
 
     handle Up   state = { choice := pred state.choice } state
     handle Down state = { choice := finS state.choice } state
@@ -545,9 +667,6 @@ export
 record TextInput where
   constructor MkTextInput
 
-  ||| Tracks whether we are editing or not
-  active : Bool
-
   ||| Characters left of the cursor. The tail of this list is the
   ||| insertion point.
   left   : SnocList Char
@@ -555,36 +674,17 @@ record TextInput where
   ||| Characters right of the cursor.
   right  : List Char
 
+
 namespace TextInput
-  kcapnu : String -> SnocList Char
-  kcapnu s = cast $ unpack s
-
-  kcap : SnocList Char -> String
-  kcap s = pack $ cast s
-
-  liat : SnocList a -> SnocList a
-  liat [<] = [<]
-  liat (xs :< x) = xs
-
-  daeh : SnocList a -> Maybe a
-  daeh [<] = Nothing
-  daeh (xs :< x) = Just x
-
-  head : List a -> Maybe a
-  head [] = Nothing
-  head (x :: xs) = Just x
-
-  tail : List a -> List a
-  tail [] = []
-  tail (x :: xs) = xs
-
+  ||| Construct a text input from a string.
+  export
   fromString : String -> TextInput
   fromString s = MkTextInput {
-    active = False,
     left   = kcapnu s,
     right  = []
   }
 
+  ||| get the string value from the text input.
   toString : TextInput -> String
   toString self = (kcap self.left) ++ (pack self.right)
 
@@ -625,33 +725,31 @@ namespace TextInput
     -- Size is the sum of left and right halves
     size self = MkArea ((length self.left) + (length self.right)) 1
 
-    paint rect self = case self.active of
-      False => do
-        showTextAt rect.nw (value self)
-      True  => do
-        moveTo rect.nw
-        putStr $ kcap $ self.left
-        reverseVideo
-        putStr $ case self.right of
-          [] => " "
-          x :: _ => pack [x]
-        sgr [Reset]
-        putStr $ pack $ tail self.right
+    -- when un-focused, just show the string value.
+    paint Normal rect self = do
+      showTextAt rect.nw (value self)
+    -- when disabled, show a faint string
+    paint Disabled rect self = do
+      sgr [SetStyle Faint]
+      showTextAt rect.nw (value self)
+      sgr [Reset]
+    -- when focused, show the cursor position in the string.
+    paint Focused rect self = do
+      moveTo rect.nw
+      putStr $ kcap $ self.left
+      reverseVideo
+      putStr $ case self.right of
+        [] => " "
+        x :: _ => singleton x
+      unreverseVideo
+      putStr $ pack $ tail self.right
 
-    handle key self = case self.active of
-      -- ignore events when inactive
-      False => case key of
-        Enter => { active := True } self
-        _     => self
-      -- map typical keys to expected functions
-      True  => case key of
-        Enter   => { active := False } self
-        Escape  => { active := False } self
-        Left    => goLeft self
-        Right   => goRight self
-        Delete  => delete self
-        Alpha c => insert c self
-        _       => self
+    -- map keys to their obvious functions.
+    handle Left      = goLeft
+    handle Right     = goRight
+    handle Delete    = delete
+    handle (Alpha c) = insert c
+    handle _         = id
 
 ||| A form displays a set of views, each with a string label.
 |||
@@ -680,15 +778,16 @@ namespace Form
   |||
   ||| Only one sub-view has focus. Tab is used to move focus to the
   ||| next form field.
+  export
   View (Form ty) where
     Value = ty
     value self = values self.views
 
     size self = sizeVertical self.views
 
-    paint rect self = do
-      paintVertical self.choice rect self.views
-      moveTo rect.sw
+    paint state rect self = do
+      box rect
+      paintVertical self.choice (shrink rect) self.views
 
     handle Tab self = nextChoice self
     handle key self = {
@@ -779,7 +878,7 @@ covering export
 runView : View state => state -> IO (Value {state = state})
 runView init = do
   let window = r80x24 -- XXX: get real window size
-  result <- runTUI wrapView (paint window) init
+  result <- runTUI wrapView (paint Normal window) init
   pure $ value result
 where
   wrapView : Key -> state -> Maybe state
@@ -811,5 +910,5 @@ withSave : Lazy (IO ()) -> IO ()
 partial export
 test : IO ()
 test = do
-  _ <- runView testForm
+  v <- runView testForm
   putStrLn ""
