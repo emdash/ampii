@@ -1,7 +1,25 @@
 ||| Minimalist terminal UI framework.
 |||
 ||| I can't get ncurses-idris working, so I'm rolling this pure-idris
-||| replacement.
+||| alternative.
+|||
+||| It's higher-level than ncurses, with the goal of being able to
+||| quickly create keyboard-driven interfaces that are 'good enough'
+||| for experimentation and prototyping, with an eye toward efficient
+||| data entry.
+|||
+||| The lack of ncurses support does pose some challenges. In
+||| particular, it's not possible to distinguish between the start of
+||| an escape sequence or the user pressing the escape key, as there
+||| is no non-blocking way to get the next character from stdin.
+|||
+||| Other limitations include:
+||| - no support for termcap or terminfo,
+|||   - no checking or fallback.
+|||
+||| The primary advantage is sheer simplicity: no dependencies are
+||| required beyond `contrib`, so long as you rely on an
+||| ANSI-compatible terminal or emulator.
 module TUI
 
 
