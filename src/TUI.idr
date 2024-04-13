@@ -209,7 +209,6 @@ namespace EscapeSequences
     -> Maybe (EscState state)
   interpretEsc f c (HaveEsc esc s) = case (decodeEsc $ esc :< c) of
     Just Nothing    => Just $ HaveEsc (esc :< c) s
-    Just (Just Escape) => Nothing
     Just (Just key) => Default <$> (f key s)
     Nothing         => Just $ Default s
   interpretEsc f '\ESC' (Default s) = Just $ HaveEsc [<] s
@@ -537,6 +536,9 @@ namespace View
   public export
   data State = Normal | Focused | Disabled
 
+  public export
+  data Response a = Update a | Escape
+
   ||| A view is a high-level UI component.
   |||
   ||| - It wraps an inner value, its state.
@@ -555,8 +557,8 @@ namespace View
     |||
     ||| The default implementation is a no-op. Override this for
     ||| stateful view.
-    handle : Key -> state -> state
-    handle _ s = s
+    handle : Key -> state -> Response state
+    handle _ s = Escape
 
   ||| Implement `View` for `()` as a no-op
   export
@@ -638,9 +640,12 @@ namespace Menu
       showTextAt rect.nw (arrowForIndex {k = self.n} self.choice)
       sgr [Reset]
 
-    handle Up   state = { choice := pred state.choice } state
-    handle Down state = { choice := finS state.choice } state
-    handle _    state = state
+    handle Up     state = Update $ { choice := pred state.choice } state
+    handle Down   state = Update $ { choice := finS state.choice } state
+    handle Escape state = Escape
+    handle Enter  state = Escape
+    handle Left   state = Escape
+    handle _      state = Update state
 
   ||| Construct a menu from a vector of views
   export
@@ -727,11 +732,13 @@ namespace TextInput
       putStr $ pack $ tail self.right
 
     -- map keys to their obvious functions.
-    handle Left      = goLeft
-    handle Right     = goRight
-    handle Delete    = delete
-    handle (Alpha c) = insert c
-    handle _         = id
+    handle Left      = Update . goLeft
+    handle Right     = Update . goRight
+    handle Delete    = Update . delete
+    handle (Alpha c) = Update . insert c
+    handle Enter     = const    Escape
+    handle Escape    = const    Escape
+    handle _         = Update . id
 
 
 ||| Associated definitions for `Form`.
@@ -746,6 +753,11 @@ namespace Form
   viewSize : Field ty -> Area
   viewSize self = size @{self.impl} self.view
 
+  handleView : Key -> Field ty -> Response (Field ty)
+  handleView k f = case handle @{f.impl} k (f.view) of
+    Update new => Update $ { view := new } f
+    Escape     => Escape
+
   ||| A form displays a set of views, each with a string label.
   |||
   ||| One field has focus, and user input is routed to this sub-view.
@@ -755,6 +767,7 @@ namespace Form
     fields : All Field tys
     focused : Fin k
     split : Nat
+    editing : Bool
     contentSize : Area
 
   parameters {k : Nat} {tys : Vect k Type}
@@ -776,40 +789,67 @@ namespace Form
   ||| Render the form vertically.
   export
   paintVertical : {k : Nat} -> {tys : Vect k Type} -> State -> Rect -> Form tys -> IO ()
-  paintVertical state window (MkForm views focused split contentArea) = do
-    loop 0 window views
+  paintVertical state window self = do
+    loop 0 window self.fields
     where
       loop : {k : Nat} -> {tys : Vect k Type} -> Nat -> Rect -> All Field tys -> IO ()
       loop _  _ [] = pure ()
       loop i  window (x :: xs) = do
         let (top, bottom) = vsplit window (viewSize x).height
-        let (left, right) = hsplit top (split + 3)
+        let (left, right) = hsplit top (self.split + 3)
         let left = inset left (MkArea 1 0)
         let right = inset right (MkArea 1 0)
-        case (i == (finToNat focused), state) of
+        case (i == (finToNat self.focused), state) of
           (True, Focused) => do
-            sgr [SetStyle SingleUnderline]
+            if self.editing
+              then sgr [SetStyle SingleUnderline]
+              else reverseVideo
             showTextAt left.nw x.label
             sgr [Reset]
-            paint @{x.impl} Focused right x.view
+            paint @{x.impl} (if self.editing then Focused else Normal) right x.view
           _ => do
             showTextAt left.nw x.label
             paint @{x.impl} Normal right x.view
         loop (S i) bottom xs
 
-  parameters {k : Nat} {tys : Vect (S k) Type}
-    ||| Dispatch keyboard input to the currently-focused subview.
-    export
-    handleNth : Fin (S k) -> Key -> All Field tys -> All Field tys
-    handleNth i k fields = updateAt i (handleView k) fields
-      where
-        handleView : Key -> Field ty -> Field ty
-        handleView k f = { view $= handle @{f.impl} k } f
+  ||| Dispatch keyboard input to the currently-focused subview.
+  export
+  handleNth
+    : {k : Nat}
+    -> {tys : Vect k Type}
+    -> Fin k
+    -> Key
+    -> All Field tys
+    -> Response (All Field tys)
+  handleNth FZ key (f :: fs) = case handleView key f of
+    Update new => Update $ new :: fs
+    Escape     => Escape
+  handleNth (FS i) key (f :: fs) = case handleNth i key fs of
+    Update fs => Update $ f :: fs
+    Escape    => Escape
 
+  parameters {k : Nat} {tys : Vect k Type}
     ||| Increment the choice by one.
     export
     nextChoice : Form tys -> Form tys
     nextChoice = { focused $= finS }
+
+    export
+    handleEditing : Key -> Form tys -> Response (Form tys)
+    handleEditing key self = case handleNth self.focused key self.fields of
+      Update fields => Update $ { fields  := fields } self
+      Escape        => Update $ { editing := False } self
+
+    export
+    handleDefault : Key -> Form tys -> Response (Form tys)
+    -- handleDefault Up _ impossible
+    handleDefault Down   = Update . nextChoice
+    handleDefault Tab    = Update . nextChoice
+    handleDefault Right  = Update . { editing := True }
+    handleDefault Enter  = Update . { editing := True }
+    handleDefault Escape = const Escape
+    handleDefault Left   = const Escape
+    handleDefault _      = Update . id
 
   ||| The View implementation for form renders each labeled sub-view
   ||| vertically.
@@ -831,10 +871,10 @@ namespace Form
         _       => pure ()
       paintVertical state (shrink window) self
 
-    handle Tab self = nextChoice self
-    handle key self = {
-      fields := handleNth self.focused key self.fields
-    } self
+    handle Tab self = Update $ nextChoice self
+    handle key self = case self.editing of
+      True => handleEditing key self
+      False => handleDefault key self
 
 
   ||| Construct a form from a list of field records
@@ -847,7 +887,8 @@ namespace Form
     fields      = fields,
     focused     = 0,
     split       = (maxLabelWidth fields),
-    contentSize = (sizeViewsVertical fields)
+    contentSize = (sizeViewsVertical fields),
+    editing     = False
   }
 
 
@@ -938,7 +979,9 @@ runView init = do
   pure result
 where
   wrapView : Key -> state -> Maybe state
-  wrapView k s = Just $ handle k s
+  wrapView k s = case handle k s of
+    Update s => Just s
+    Escape   => Nothing
 
 
 
