@@ -23,11 +23,12 @@
 module TUI
 
 
-import Data.HVect
+import Control.ANSI
+import Data.Vect
+import Data.Vect.Quantifiers
 import System
 import System.File
 import System.Signal
-import Control.ANSI
 import Derive.Prelude
 
 
@@ -94,6 +95,37 @@ namespace Util
   tail : List a -> List a
   tail [] = []
   tail (x :: xs) = xs
+
+  ||| Map a function over a heterogenous vector.
+  |||
+  ||| Unlike mapProperty, the result is homogenous vector. This is
+  ||| useful for extracting properties which don't vary with index
+  ||| type.
+  public export
+  mapAll
+    :  {k : Nat}
+    -> {xs : Vect k a}
+    -> (f : forall x. p x -> y)
+    -> All p xs
+    -> Vect k y
+  mapAll f xs = forget $ mapProperty f xs
+
+  ||| Fold over a heterogenous vector.
+  |||
+  ||| The result is collected into a single value.
+  ||| f : map each generic value into a single concrete value
+  ||| g : accumulate concrete values into a single result.
+  public export
+  reduceAll
+    :  {k : Nat}
+    -> {xs : Vect k a}
+    -> (g : y -> y -> y)
+    -> (f : forall x. p x -> y)
+    -> y
+    -> All p xs
+    -> y
+  reduceAll g f accum [] = accum
+  reduceAll g f accum (x :: xs) = reduceAll g f (g accum (f x)) xs
 
 
 ||| Functions and types having to do with terminal escape sequences.
@@ -515,87 +547,6 @@ namespace View
     paint _ r = showTextAt r.nw
 
 
-||| A heterogenous list of views.
-|||
-||| XXX: This type may be unnecessary. Consider replacing it with
-||| HVect.  Alternatively, this might become part of a `Container`
-||| interface.
-public export
-data ViewList : Type -> Type where
-  End   : ViewList ()
-  Field : String -> View a => a -> ViewList b -> ViewList (a, b)
-
-
-||| Associated definitions for `ViewList`
-namespace ViewList
-  ||| XXX: this is kinda broken
-  export
-  values : ViewList ty -> ty
-  values End = ()
-  values (Field _ x y) = (x, values y)
-
-  ||| Project the labels out of the ViewList as a list of strings.
-  export
-  labels : ViewList _ -> List String
-  labels End = []
-  labels (Field s _ y) = s :: labels y
-
-  ||| The size of the widest label in the the view list.
-  export
-  labelSplit : ViewList _ -> Nat
-  labelSplit l = foldl max 0 $ length <$> labels l
-
-  ||| Calculate the natural size of this view list.
-  export
-  sizeVertical : ViewList _ -> Area
-  sizeVertical l =
-    let MkArea width height = rec l
-    in MkArea (width + labelSplit l) height
-    where
-      rec : ViewList _ -> Area
-      rec End = MkArea 0 0
-      rec (Field _ x y) = vunion (size x) (rec y)
-
-  ||| Render the view-list along a vertical axis.
-  export
-  paintVertical : Nat -> Rect -> ViewList _ -> IO ()
-  paintVertical focus r l = do
-    let split = (labelSplit l)
-    vline (MkPos (r.w + split + 1) r.n) (r.size.height)
-    loop 0 split r l
-    where
-      loop : Nat -> Nat -> Rect -> ViewList _ -> IO ()
-      loop _ _ _ End = pure ()
-      loop i split r (Field s x y) = do
-        let (top, bottom) = vsplit r (size x).height
-        let (left, right) = hsplit top (split + 3)
-
-        if i == focus
-          then do
-            sgr [SetStyle SingleUnderline]
-            showTextAt left.nw s
-            sgr [Reset]
-            paint Focused right x
-          else do
-            showTextAt left.nw s
-            paint Normal right x
-
-        loop (S i) split bottom y
-
-  ||| Dispatch keyboard input to the currently-focused subview.
-  export
-  handleNth : Nat -> Key -> ViewList ty -> ViewList ty
-  handleNth _     _ End           = End
-  handleNth Z     k (Field s x y) = Field s (handle k x) y
-  handleNth (S n) k (Field s x y) = Field s x (handleNth n k y)
-
-  ||| Return the length of the viewlist.
-  export
-  length : ViewList _ -> Nat
-  length End = Z
-  length (Field _ _ y) = S (length y)
-
-
 ||| An interactive view which represents an exclusive choice.
 |||
 ||| XXX: rename me
@@ -748,17 +699,89 @@ namespace TextInput
     handle (Alpha c) = insert c
     handle _         = id
 
-||| A form displays a set of views, each with a string label.
-|||
-||| Only one sub-view has focus, and user input is routed to this
-||| sub-view.
-record Form ty where
-  constructor MkForm
-  views : ViewList ty
-  choice : Nat
 
 ||| Associated definitions for `Form`.
 namespace Form
+  public export
+  record Field ty where
+    constructor F
+    label : String
+    view : ty
+    {auto impl : View ty}
+
+  ||| A form displays a set of views, each with a string label.
+  |||
+  ||| One field has focus, and user input is routed to this sub-view.
+  export
+  record Form (tys : Vect k Type) where
+    constructor MkForm
+    fields : All Field tys
+    focused : Fin k
+
+  parameters {k : Nat} {tys : Vect k Type}
+    public export
+    views : All Field tys -> HVect tys
+    views tys = mapProperty (.view) tys
+
+    export
+    labels : All Field tys -> Vect k String
+    labels tys = mapAll (.label) tys
+
+    export
+    maxLabelWidth : All Field tys -> Nat
+    maxLabelWidth tys = reduceAll max (length . (.label)) 0 tys
+
+    ||| Calculate the natural size of this view list.
+    export
+    sizeVertical : All Field tys -> Area
+    sizeVertical fields =
+      let MkArea width height = reduceAll vunion (fieldSize) (MkArea 0 0) fields
+      in MkArea (width + maxLabelWidth fields) height
+      where
+        fieldSize : Field ty -> Area
+        fieldSize self = size @{self.impl} self.view
+
+{-
+  ||| Render the view-list along a vertical axis.
+  export
+  paintVertical : Form tys -> IO ()
+  paintVertical focus r l = do
+    let split = (labelSplit l)
+    vline (MkPos (r.w + split + 1) r.n) (r.size.height)
+    loop 0 split r l
+    where
+      loop : Nat -> Nat -> Rect -> ViewList _ -> IO ()
+      loop _ _ _ End = pure ()
+      loop i split r (Field s x y) = do
+        let (top, bottom) = vsplit r (size x).height
+        let (left, right) = hsplit top (split + 3)
+
+        if i == focus
+          then do
+            sgr [SetStyle SingleUnderline]
+            showTextAt left.nw s
+            sgr [Reset]
+            paint Focused right x
+          else do
+            showTextAt left.nw s
+            paint Normal right x
+
+        loop (S i) split bottom y
+
+  ||| Dispatch keyboard input to the currently-focused subview.
+  export
+  handleNth : Nat -> Key -> ViewList ty -> ViewList ty
+  handleNth _     _ End           = End
+  handleNth Z     k (Field s x y) = Field s (handle k x) y
+  handleNth (S n) k (Field s x y) = Field s x (handleNth n k y)
+
+  ||| Return the length of the viewlist.
+  export
+  length : ViewList _ -> Nat
+  length End = Z
+  length (Field _ _ y) = S (length y)
+
+
   ||| Increment the choice by one.
   export
   nextChoice : Form ty -> Form ty
