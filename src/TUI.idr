@@ -479,16 +479,6 @@ namespace View
   ||| - It can update its state in response to events.
   public export
   interface View state where
-    ||| The value of this view type.
-    0 Value : Type
-    Value = state
-
-    ||| Get the current value of the view
-    |||
-    ||| This is so a stateful widget can project its inner value.  an
-    ||| inner value.
-    value : state -> Value
-
     ||| Calculate the "requested" size
     size  : state -> Area
 
@@ -507,14 +497,11 @@ namespace View
   View () where
     size  _     = MkArea 0 0
     paint _ _ _ = pure ()
-    value       = id
 
   ||| Any type implementing `Show` is automatically a (non-interative)
   ||| view.
   export
   Show a => View a where
-    Value = a
-    value = id
     size s = MkArea (length (show s)) 1
     paint _ r s = showTextAt r.nw (show s)
 
@@ -524,7 +511,6 @@ namespace View
   ||| string directly to the screen.
   export
   [string] View String where
-    value = id
     size s = MkArea (length s) 1
     paint _ r = showTextAt r.nw
 
@@ -654,9 +640,6 @@ namespace Menu
   ||| TBD: filter options based on text typed.
   export
   View a => View (Menu a) where
-    Value = Value {state = a}
-    value self = value $ index self.choice self.choices
-
     size self =
       let width = foldl max 0 $ map (width . size) self.choices
       in MkArea (width + 2) $ height $ size $ index self.choice self.choices
@@ -736,20 +719,16 @@ namespace TextInput
   ||| Implement View for TextInput
   export
   View TextInput where
-    -- Text view wraps a string value
-    Value = String
-    value = toString
-
     -- Size is the sum of left and right halves
     size self = MkArea ((length self.left) + (length self.right)) 1
 
     -- when un-focused, just show the string value.
     paint Normal rect self = do
-      showTextAt rect.nw (value self)
+      showTextAt rect.nw (toString self)
     -- when disabled, show a faint string
     paint Disabled rect self = do
       sgr [SetStyle Faint]
-      showTextAt rect.nw (value self)
+      showTextAt rect.nw (toString self)
       sgr [Reset]
     -- when focused, show the cursor position in the string.
     paint Focused rect self = do
@@ -798,9 +777,6 @@ namespace Form
   ||| next form field.
   export
   View (Form ty) where
-    Value = ty
-    value self = values self.views
-
     size self = sizeVertical self.views
 
     paint state rect self = do
@@ -893,11 +869,11 @@ runTUI handler render init = do
 |||
 ||| Use this entry point if you want to use the `View` abstraction.
 covering export
-runView : View state => state -> IO (Value {state = state})
+runView : View state => state -> IO state
 runView init = do
   let window = r80x24 -- XXX: get real window size
   result <- runTUI wrapView (paint Normal window) init
-  pure $ value result
+  pure result
 where
   wrapView : Key -> state -> Maybe state
   wrapView k s = Just $ handle k s
@@ -922,8 +898,6 @@ testForm = MkForm {
   views = testViewList,
   choice = 0
 }
-
-withSave : Lazy (IO ()) -> IO ()
 
 partial export
 test : IO ()
