@@ -243,15 +243,21 @@ namespace Geometry
     height : Nat
   %runElab derive "Area" [Eq, Ord, Show]
 
-  ||| Adding a point to an area returns a new point.
-  public export
-  (+) : Pos -> Area -> Pos
-  (+) (MkPos x y) (MkArea w h) = MkPos (x + w) (y + h)
+  namespace AreaPosOps
+    ||| Adding a point to an area returns a new point.
+    public export
+    (+) : Pos -> Area -> Pos
+    (+) (MkPos x y) (MkArea w h) = MkPos (x + w) (y + h)
 
-  ||| The difference between two locations defines an area
-  public export
-  (-) : Pos -> Pos -> Area
-  (-) a b = MkArea (a.x `diff` b.x) (a.y `diff` b.y)
+    ||| The difference between two locations defines an area
+    public export
+    (-) : Pos -> Pos -> Area
+    (-) a b = MkArea (a.x `diff` b.x) (a.y `diff` b.y)
+
+  namespace MovePointOps
+    public export
+    (-) : Pos -> Area -> Pos
+    a - v = MkPos (a.x `minus` v.width) (a.y `minus` v.height)
 
   ||| A width and height without a location.
   namespace Area
@@ -269,6 +275,14 @@ namespace Geometry
     export
     vunion : Area -> Area -> Area
     vunion a b = MkArea (a.width + b.width) (max a.height b.height)
+
+    export
+    (+) : Area -> Area -> Area
+    a + b = MkArea (a.width + b.width) (a.height + b.height)
+
+    export
+    (-) : Area -> Area -> Area
+    a - b = MkArea (a.width `minus` b.width) (a.height `minus` b.height)
 
   ||| A rectangular screen region.
   |||
@@ -362,6 +376,14 @@ namespace Geometry
     export
     Semigroup Rect where
       (<+>) = union
+
+    export
+    (+) : Rect -> Area -> Rect
+    r + v = MkRect (r.nw + v) r.size
+
+    export
+    (-) : Rect -> Area -> Rect
+    r - v = MkRect (r.nw - v) r.size
 
   ||| A common default size of terminal window.
   export
@@ -733,6 +755,7 @@ namespace Form
     fields : All Field tys
     focused : Fin k
     split : Nat
+    contentSize : Area
 
   parameters {k : Nat} {tys : Vect k Type}
     views : All Field tys -> HVect tys
@@ -747,14 +770,13 @@ namespace Form
     ||| Calculate the size the form widgets (not including the labels)
     export
     sizeViewsVertical : All Field tys -> Area
-    sizeViewsVertical fields = reduceAll vunion (viewSize) (MkArea 0 0) fields
+    sizeViewsVertical fields = reduceAll hunion (viewSize) (MkArea 0 0) fields
 
 
   ||| Render the form vertically.
   export
-  paintVertical : {k : Nat} -> {tys : Vect k Type} -> Rect -> Form tys -> IO ()
-  paintVertical window (MkForm views focused split) = do
-    vline (MkPos (window.w + split + 1) window.n) (window.size.height)
+  paintVertical : {k : Nat} -> {tys : Vect k Type} -> State -> Rect -> Form tys -> IO ()
+  paintVertical state window (MkForm views focused split contentArea) = do
     loop 0 window views
     where
       loop : {k : Nat} -> {tys : Vect k Type} -> Nat -> Rect -> All Field tys -> IO ()
@@ -762,13 +784,15 @@ namespace Form
       loop i  window (x :: xs) = do
         let (top, bottom) = vsplit window (viewSize x).height
         let (left, right) = hsplit top (split + 3)
-        if i == (finToNat focused)
-          then do
+        let left = inset left (MkArea 1 0)
+        let right = inset right (MkArea 1 0)
+        case (i == (finToNat focused), state) of
+          (True, Focused) => do
             sgr [SetStyle SingleUnderline]
             showTextAt left.nw x.label
             sgr [Reset]
             paint @{x.impl} Focused right x.view
-          else do
+          _ => do
             showTextAt left.nw x.label
             paint @{x.impl} Normal right x.view
         loop (S i) bottom xs
@@ -798,11 +822,14 @@ namespace Form
   ||| next form field.
   export
   {k : Nat} -> {tys : Vect (S k) Type} -> View (Form tys) where
-    size self = sizeViewsVertical self.fields
+    size self = self.contentSize + MkArea self.split 1
 
-    paint state rect self = do
-      box rect
-      paintVertical (shrink rect) self
+    paint state window self = do
+      vline (MkPos (window.w + self.split + 3) window.n) window.size.height
+      case state of
+        Focused => box window
+        _       => pure ()
+      paintVertical state (shrink window) self
 
     handle Tab self = nextChoice self
     handle key self = {
@@ -810,12 +837,18 @@ namespace Form
     } self
 
 
+  ||| Construct a form from a list of field records
   form
     : {k : Nat}
     -> {tys : Vect (S k) Type}
     -> All Field tys
     -> Form tys
-  form fields = MkForm fields 0 $ maxLabelWidth fields + 3
+  form fields = MkForm {
+    fields      = fields,
+    focused     = 0,
+    split       = (maxLabelWidth fields),
+    contentSize = (sizeViewsVertical fields)
+  }
 
 
 ||| Low-level TUI application mainloop.
@@ -901,7 +934,7 @@ covering export
 runView : View state => state -> IO state
 runView init = do
   let window = r80x24 -- XXX: get real window size
-  result <- runTUI wrapView (paint Normal window) init
+  result <- runTUI wrapView (paint Focused window) init
   pure result
 where
   wrapView : Key -> state -> Maybe state
@@ -925,5 +958,5 @@ testForm = form [
 partial export
 test : IO ()
 test = do
-  v <- runView testForm
+  v <- runView $ form [F "menu" testMenu, F "nested" testForm]
   putStrLn ""
