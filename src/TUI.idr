@@ -878,6 +878,7 @@ namespace Form
 
 
   ||| Construct a form from a list of field records
+  public export
   form
     : {k : Nat}
     -> {tys : Vect (S k) Type}

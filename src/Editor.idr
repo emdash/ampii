@@ -3,14 +3,19 @@
 |||
 module Editor
 
+import System
 import Data.List
 import Data.String
 import Derive.Prelude
 import Data.Either
 import Language.JSON
+import TUI
 
 %default total
 %language ElabReflection
+
+{-
+
 %hide Prelude.(/) -- so we can use `/` to construct paths without ambiguity
 
 
@@ -206,6 +211,25 @@ delete path = Internal.delete (toInternal path)
 export
 insert : Path -> (subtree : JSON) -> JSON -> Result JSON
 insert path = Internal.insert (toInternal path)
+-}
+
+
+
+covering
+test : IO ()
+test = ignore $ runView $ form [
+  F "name"      $ fromString "",
+  F "brand"     $ fromString "",
+  F "barcode"   $ fromString "",
+  F "nutrition" "Not Implemented"
+]
+
+
+covering
+export
+main : List String -> IO ()
+main ["test"] = Editor.test
+main _        = die "Invalid subcommand"
 
 
 {-

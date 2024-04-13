@@ -23,13 +23,15 @@ import Inventory
 import USBScale
 import Zipper
 import TUI
+import Editor
 
 
 partial
 dispatch : String -> List String -> IO ()
 dispatch "inventory" rest = Inventory.main rest
 dispatch "scale"     rest = USBScale.main rest
-dispatch "editor"    _    = TUI.test
+dispatch "test  "    _    = TUI.test
+dispatch "editor"    rest = Editor.main rest
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
 partial
