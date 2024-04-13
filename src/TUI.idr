@@ -127,6 +127,18 @@ namespace Util
   reduceAll g f accum [] = accum
   reduceAll g f accum (x :: xs) = reduceAll g f (g accum (f x)) xs
 
+  ||| Update the value at the index, without changing the type.
+  public export
+  updateAt
+    :  {k : Nat}
+    -> {xs : Vect k a}
+    -> (i : Fin k)
+    -> (f : forall x. p x -> p x)
+    -> All p xs
+    -> All p xs
+  updateAt FZ     f (x :: xs) = f x :: xs
+  updateAt (FS i) f (x :: xs) = x :: updateAt i f xs
+
 
 ||| Functions and types having to do with terminal escape sequences.
 |||
@@ -709,6 +721,9 @@ namespace Form
     view : ty
     {auto impl : View ty}
 
+  viewSize : Field ty -> Area
+  viewSize self = size @{self.impl} self.view
+
   ||| A form displays a set of views, each with a string label.
   |||
   ||| One field has focus, and user input is routed to this sub-view.
@@ -717,77 +732,60 @@ namespace Form
     constructor MkForm
     fields : All Field tys
     focused : Fin k
+    split : Nat
 
   parameters {k : Nat} {tys : Vect k Type}
-    public export
     views : All Field tys -> HVect tys
     views tys = mapProperty (.view) tys
 
-    export
     labels : All Field tys -> Vect k String
     labels tys = mapAll (.label) tys
 
-    export
     maxLabelWidth : All Field tys -> Nat
     maxLabelWidth tys = reduceAll max (length . (.label)) 0 tys
 
-    ||| Calculate the natural size of this view list.
+    ||| Calculate the size the form widgets (not including the labels)
     export
-    sizeVertical : All Field tys -> Area
-    sizeVertical fields =
-      let MkArea width height = reduceAll vunion (fieldSize) (MkArea 0 0) fields
-      in MkArea (width + maxLabelWidth fields) height
-      where
-        fieldSize : Field ty -> Area
-        fieldSize self = size @{self.impl} self.view
+    sizeViewsVertical : All Field tys -> Area
+    sizeViewsVertical fields = reduceAll vunion (viewSize) (MkArea 0 0) fields
 
-{-
-  ||| Render the view-list along a vertical axis.
+
+  ||| Render the form vertically.
   export
-  paintVertical : Form tys -> IO ()
-  paintVertical focus r l = do
-    let split = (labelSplit l)
-    vline (MkPos (r.w + split + 1) r.n) (r.size.height)
-    loop 0 split r l
+  paintVertical : {k : Nat} -> {tys : Vect k Type} -> Rect -> Form tys -> IO ()
+  paintVertical window (MkForm views focused split) = do
+    vline (MkPos (window.w + split + 1) window.n) (window.size.height)
+    loop 0 window views
     where
-      loop : Nat -> Nat -> Rect -> ViewList _ -> IO ()
-      loop _ _ _ End = pure ()
-      loop i split r (Field s x y) = do
-        let (top, bottom) = vsplit r (size x).height
+      loop : {k : Nat} -> {tys : Vect k Type} -> Nat -> Rect -> All Field tys -> IO ()
+      loop _  _ [] = pure ()
+      loop i  window (x :: xs) = do
+        let (top, bottom) = vsplit window (viewSize x).height
         let (left, right) = hsplit top (split + 3)
-
-        if i == focus
+        if i == (finToNat focused)
           then do
             sgr [SetStyle SingleUnderline]
-            showTextAt left.nw s
+            showTextAt left.nw x.label
             sgr [Reset]
-            paint Focused right x
+            paint @{x.impl} Focused right x.view
           else do
-            showTextAt left.nw s
-            paint Normal right x
+            showTextAt left.nw x.label
+            paint @{x.impl} Normal right x.view
+        loop (S i) bottom xs
 
-        loop (S i) split bottom y
+  parameters {k : Nat} {tys : Vect (S k) Type}
+    ||| Dispatch keyboard input to the currently-focused subview.
+    export
+    handleNth : Fin (S k) -> Key -> All Field tys -> All Field tys
+    handleNth i k fields = updateAt i (handleView k) fields
+      where
+        handleView : Key -> Field ty -> Field ty
+        handleView k f = { view $= handle @{f.impl} k } f
 
-  ||| Dispatch keyboard input to the currently-focused subview.
-  export
-  handleNth : Nat -> Key -> ViewList ty -> ViewList ty
-  handleNth _     _ End           = End
-  handleNth Z     k (Field s x y) = Field s (handle k x) y
-  handleNth (S n) k (Field s x y) = Field s x (handleNth n k y)
-
-  ||| Return the length of the viewlist.
-  export
-  length : ViewList _ -> Nat
-  length End = Z
-  length (Field _ _ y) = S (length y)
-
-
-  ||| Increment the choice by one.
-  export
-  nextChoice : Form ty -> Form ty
-  nextChoice self = {
-    choice := (self.choice + 1) `mod` (length self.views)
-  } self
+    ||| Increment the choice by one.
+    export
+    nextChoice : Form tys -> Form tys
+    nextChoice = { focused $= finS }
 
   ||| The View implementation for form renders each labeled sub-view
   ||| vertically.
@@ -799,17 +797,25 @@ namespace Form
   ||| Only one sub-view has focus. Tab is used to move focus to the
   ||| next form field.
   export
-  View (Form ty) where
-    size self = sizeVertical self.views
+  {k : Nat} -> {tys : Vect (S k) Type} -> View (Form tys) where
+    size self = sizeViewsVertical self.fields
 
     paint state rect self = do
       box rect
-      paintVertical self.choice (shrink rect) self.views
+      paintVertical (shrink rect) self
 
     handle Tab self = nextChoice self
     handle key self = {
-      views := handleNth self.choice key self.views
+      fields := handleNth self.focused key self.fields
     } self
+
+
+  form
+    : {k : Nat}
+    -> {tys : Vect (S k) Type}
+    -> All Field tys
+    -> Form tys
+  form fields = MkForm fields 0 $ maxLabelWidth fields + 3
 
 
 ||| Low-level TUI application mainloop.
@@ -908,19 +914,13 @@ where
 testMenu : Menu String
 testMenu = menu ["foo", "bar", "baz"]
 
-testViewList : ViewList (Menu String, (Menu String, (TextInput, (TextInput, ()))))
-testViewList =
-  Field "F1" testMenu
-  $ Field "Long name" testMenu
-  $ Field "Text Input" (fromString "test")
-  $ Field "Test" (fromString "test")
-  $ End
-
-testForm : Form (Menu String, (Menu String, (TextInput, (TextInput, ()))))
-testForm = MkForm {
-  views = testViewList,
-  choice = 0
-}
+testForm : Form [Menu String, Menu String, TextInput, TextInput]
+testForm = form [
+  F "F1" testMenu,
+  F "Long name" testMenu,
+  F "Text Input" (fromString "test"),
+  F "Test" (fromString "test")
+]
 
 partial export
 test : IO ()
