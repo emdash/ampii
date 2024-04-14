@@ -30,6 +30,11 @@ import public TUI.View.TextInput
 import public TUI.View.Numeric
 import public TUI.View.Form
 import public TUI.View.Table
+-- import public TUI.View.Scrollable
+-- import public TUI.View.Popup
+-- import public TUI.View.Toggle
+-- import public TUI.View.Button
+-- import public TUI.Layout
 -- import public TUI.View.SOP
 -- import public TUI.View.Split
 -- import public TUI.View.Sequence

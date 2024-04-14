@@ -21,6 +21,9 @@ import Util
 ||| keyboard events from STDIN.
 |||
 ||| Use this entry point if you do not want escape-sequence decoding.
+|||
+||| SIGINT is interpreted as *Cancel*, meaning the initial state is
+||| returned, discarding the user's changes.
 covering
 runRaw
   :  (Char -> state -> Maybe state)
@@ -43,6 +46,7 @@ where
   -- restore terminal state as best we can
   cleanup : IO ()
   cleanup = do
+    clearScreen
     restoreCursor
     showCursor
 
@@ -67,7 +71,7 @@ where
     -- If we ever need to handle some other signal, like SIGWINCH,
     -- it would be done here.
     Nothing <- handleNextCollectedSignal
-             | Just SigINT => pure s
+             | Just SigINT => pure init
              | Just _      => die "unexpected signal"
 
     -- handle next key press
@@ -89,9 +93,11 @@ runTUI handler render init = do
   ret <- runRaw (interpretEsc handler) (render . unwrapEsc) (wrapEsc init)
   pure $ unwrapEsc ret
 
-||| Run a TUI application.
+||| Run a top-level View.
 |||
 ||| Use this entry point if you want to use the `View` abstraction.
+|||
+||| This will run until the top-level view gives up its focus.
 covering export
 runView : View state => state -> IO state
 runView init = do
@@ -102,5 +108,5 @@ where
   wrapView k s = case handle k s of
     Update s    => Just s
     -- effectively ignore these cases, since we're at the root.
-    FocusParent => Just s
+    FocusParent => Nothing
     FocusNext   => Just s
