@@ -124,18 +124,23 @@ handleCommon Escape       _ = const FocusParent
 handleCommon Tab          _ = const FocusNext
 handleCommon _            _ = Update . id
 
+-- the unicode symbols which decorate the widget
+natSymbol  : Char ; natSymbol  = cast 0x2115
+intSymbol  : Char ; intSymbol  = cast 0x2124
+realSymbol : Char ; realSymbol = cast 0x211d
+
 ||| This implementation ignores decimals and minus signs.
 export
 View (Numeric Nat) where
   size self = MkArea (width self.digits) 1
-  paint state window self = paintNumeric (cast 0x2115) state window self
+  paint state window self = paintNumeric natSymbol state window self
   handle key = handleCommon key $ (map Digit) . charToDigit
 
 ||| This implementation ignores decimals, but handles the minus sign.
 export
 View (Numeric Integer) where
   size self = MkArea (width self.digits) 1
-  paint state window self = paintNumeric (cast 0x2124) state window self
+  paint state window self = paintNumeric intSymbol state window self
   handle key = handleCommon key special
     where
       special : Char -> Maybe Input
@@ -146,7 +151,7 @@ View (Numeric Integer) where
 export
 View (Numeric Double) where
   size self = MkArea (width self.digits) 1
-  paint state window self = paintNumeric (cast 0x211D) state window self
+  paint state window self = paintNumeric realSymbol state window self
   handle key = handleCommon key special
     where
       special : Char -> Maybe Input
