@@ -70,8 +70,8 @@ gallery = do
   v <- runView $ form [
     F "menu" testMenu,
     F "Nat" $ numeric (the Nat 5) 1,
-    F "Integer" $ numeric (the Integer 5) 1,
-    F "Double"  $ numeric ( the Double 5.0) 0.1,
+    F "Integer" $ numeric (the Integer 5)  1,
+    F "Double"  $ numeric (the Double 5.0) 0.1,
     F "nested" testForm
   ]
   putStrLn ""
