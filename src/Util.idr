@@ -1,5 +1,7 @@
 module Util
 
+import Data.SnocList
+import Data.String
 import Data.SortedMap
 import Language.JSON
 
@@ -60,3 +62,33 @@ foldDict : Eq a => Ord a => a  -> Nat -> SortedMap a Nat -> SortedMap a Nat
 foldDict k v accum = case SortedMap.lookup k accum of
   Nothing => insert k v       accum
   Just x  => insert k (v + x) accum
+
+
+namespace Data.SnocList
+  ||| `unpack`, but for SnocLists
+  public export
+  kcapnu : String -> SnocList Char
+  kcapnu s = cast $ unpack s
+
+  ||| `pack`, but for SnocLists
+  public export
+  kcap : SnocList Char -> String
+  kcap s = pack $ cast s
+
+  ||| `tail` for SnocList
+  public export
+  liat : SnocList a -> SnocList a
+  liat [<] = [<]
+  liat (xs :< x) = xs
+
+  ||| `head` for SnocList
+  public export
+  daeh : SnocList a -> Maybe a
+  daeh [<] = Nothing
+  daeh (xs :< x) = Just x
+
+  ||| Return the tail part of a regular list.
+  public export
+  tail : List a -> List a
+  tail [] = []
+  tail (x :: xs) = xs

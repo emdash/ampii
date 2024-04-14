@@ -30,6 +30,8 @@ import System
 import System.File
 import System.Signal
 import Derive.Prelude
+import Util
+import Zipper
 
 
 %default total
@@ -67,34 +69,6 @@ namespace Util
   pred : Fin n -> Fin n
   pred FZ     = FZ
   pred (FS k) = weaken k
-
-  ||| `unpack`, but for SnocLists
-  public export
-  kcapnu : String -> SnocList Char
-  kcapnu s = cast $ unpack s
-
-  ||| `pack`, but for SnocLists
-  public export
-  kcap : SnocList Char -> String
-  kcap s = pack $ cast s
-
-  ||| `tail` for SnocList
-  public export
-  liat : SnocList a -> SnocList a
-  liat [<] = [<]
-  liat (xs :< x) = xs
-
-  ||| `head` for SnocList
-  public export
-  daeh : SnocList a -> Maybe a
-  daeh [<] = Nothing
-  daeh (xs :< x) = Just x
-
-  ||| Return the tail part of a regular list.
-  public export
-  tail : List a -> List a
-  tail [] = []
-  tail (x :: xs) = xs
 
   ||| Map a function over a heterogenous vector.
   |||
@@ -653,64 +627,28 @@ namespace Menu
   menu {k} choices = MkMenu (S k) choices (natToFinLt 0)
 
 
-||| An editable string
-export
-record TextInput where
-  constructor MkTextInput
-
-  ||| Characters left of the cursor. The tail of this list is the
-  ||| insertion point.
-  left   : SnocList Char
-
-  ||| Characters right of the cursor.
-  right  : List Char
-
-
 namespace TextInput
+  ||| An editable string
+  export
+  record TextInput where
+    constructor TI
+    chars : Zipper Char
+
   ||| Construct a text input from a string.
   export
   fromString : String -> TextInput
-  fromString s = MkTextInput {
-    left   = kcapnu s,
-    right  = []
-  }
+  fromString s = TI { chars = fromList $ unpack s }
 
   ||| get the string value from the text input.
-  toString : TextInput -> String
-  toString self = (kcap self.left) ++ (pack self.right)
-
-  ||| Insert a character.
-  insert : Char -> TextInput -> TextInput
-  insert c = { left $= (:< c) }
-
-  ||| Delete a character.
   export
-  delete : TextInput -> TextInput
-  delete = { left $= liat }
-
-  ||| Move insertion point rightward
-  goRight : TextInput -> TextInput
-  goRight self = case self.right of
-    []      => self
-    x :: xs => {
-      left  $= (:< x),
-      right := xs
-    } self
-
-  ||| Move insertion point rightward
-  goLeft : TextInput -> TextInput
-  goLeft self = case self.left of
-    [<]     => self
-    xs :< x => {
-      left  := xs,
-      right $= (x ::)
-    } self
+  toString : TextInput -> String
+  toString self = pack $ toList self.chars
 
   ||| Implement View for TextInput
   export
   View TextInput where
     -- Size is the sum of left and right halves
-    size self = MkArea ((length self.left) + (length self.right)) 1
+    size self = MkArea (length self.chars) 1
 
     -- when un-focused, just show the string value.
     paint Normal rect self = do
@@ -723,22 +661,154 @@ namespace TextInput
     -- when focused, show the cursor position in the string.
     paint Focused rect self = do
       moveTo rect.nw
-      putStr $ kcap $ self.left
+      putStr $ kcap $ self.chars.left
       reverseVideo
-      putStr $ case self.right of
+      putStr $ case self.chars.right of
         [] => " "
         x :: _ => singleton x
       unreverseVideo
-      putStr $ pack $ tail self.right
+      putStr $ pack $ tail self.chars.right
 
     -- map keys to their obvious functions.
-    handle Left      = Update . goLeft
-    handle Right     = Update . goRight
-    handle Delete    = Update . delete
-    handle (Alpha c) = Update . insert c
+    handle Left      = Update . { chars $= goLeft  }
+    handle Right     = Update . { chars $= goRight }
+    handle Delete    = Update . { chars $= delete  }
+    handle (Alpha c) = Update . { chars $= insert c}
     handle Enter     = const    Escape
     handle Escape    = const    Escape
     handle _         = Update . id
+
+
+namespace Numeric
+  data Input
+    = Digit (Fin 10)
+    | Dot
+    | Minus
+
+  charToDigit : Char -> Maybe (Fin 10)
+  charToDigit char = integerToFin (cast $ ord char - ord '0') 10
+
+  digitToChar : Fin 10 -> Char
+  digitToChar d = cast $ (ord '0') + cast (finToNat d)
+
+  ||| An editable string
+  data Digits
+    = Integral (SnocList (Fin 10))
+    | Decimal  (SnocList (Fin 10)) (SnocList (Fin 10))
+
+  export
+  record Numeric a where
+    constructor N
+    digits : Digits
+    sign   : Bool
+    step   : a
+
+  length : Digits -> Nat
+  length (Integral  ds)    = 1 + length ds
+  length (Decimal   is ds) = max 4 (1 + length is + 1 + length ds)
+
+  shift : Fin 10 -> Digits -> Digits
+  shift d (Integral ds)  = Integral (ds :< d)
+  shift d (Decimal i ds) = Decimal  i (ds :< d)
+
+  input : Input -> Numeric a -> Numeric a
+  input (Digit d) self = { digits $= shift d } self
+  input Dot       self = case self.digits of
+    Integral ds   => { digits := Decimal ds [<] } self
+    Decimal  _  _ => self
+  input Minus     self = { sign $= not } self
+
+  export
+  empty : Digits
+  empty = Integral [<]
+
+  digitsToString : SnocList (Fin 10) -> String
+  digitsToString [<] = "0"
+  digitsToString xs = kcap $ digitToChar <$> xs
+
+  toString : Numeric a -> String
+  toString (N (Integral xs) sign _) =
+    if sign
+      then "-\{digitsToString xs}"
+      else " \{digitsToString xs}"
+  toString (N (Decimal integer decimal) sign _) =
+    if sign
+      then "-\{digitsToString integer}.\{digitsToString decimal}"
+      else " \{digitsToString integer}.\{digitsToString decimal}"
+
+  toNat : Num a => Numeric a -> Maybe a
+  toNat = parsePositive . toString
+
+  toInteger : Num a => Neg a => Numeric a -> Maybe a
+  toInteger = parseInteger . toString
+
+  toDouble : Numeric a -> Maybe Double
+  toDouble = parseDouble . toString
+
+  paintNumeric : State -> Rect -> Numeric a -> IO ()
+  paintNumeric state window self = do
+    case state of
+        Focused => reverseVideo
+        _       => sgr [SetStyle SingleUnderline]
+    showTextAt window.nw (toString self)
+    sgr [Reset]
+
+  handleChar : (Char -> Maybe Input) -> Char -> Numeric a -> Numeric a
+  handleChar f char self = case f char of
+    Just i  => input i self
+    Nothing => self
+
+  handleCommon : Key -> (Char -> Maybe Input) -> Numeric a -> Response (Numeric a)
+  handleCommon (Alpha char) f = Update . (handleChar f char)
+  handleCommon Delete       _ = Update . { digits := empty }
+  handleCommon Left         _ = const Escape
+  handleCommon Enter        _ = const Escape
+  handleCommon Escape       _ = const Escape
+  handleCommon _            _ = Update . id
+
+  export
+  View (Numeric Nat) where
+    size self = MkArea (length self.digits) 1
+    paint state window self = paintNumeric state window self
+
+    -- ignores decimal and minus sign
+    handle key = handleCommon key $ (map Digit) . charToDigit
+
+  export
+  View (Numeric Integer) where
+    size self = MkArea (length self.digits) 1
+    paint state window self = paintNumeric state window self
+
+    -- ignores decimal
+    handle key = handleCommon key special
+      where
+        special : Char -> Maybe Input
+        special '-' = Just Minus
+        special c   = Digit <$> charToDigit c
+
+  export
+  View (Numeric Double) where
+    size self = MkArea (length self.digits) 1
+    paint state window self = paintNumeric state window self
+
+    handle key = handleCommon key special
+      where
+        special : Char -> Maybe Input
+        special '-' = Just Minus
+        special '.' = Just Dot
+        special c   = Digit <$> charToDigit c
+
+  export
+  numeric : a -> a -> Numeric a
+  numeric value step = N {
+    digits = empty, -- xxx: decode
+    sign   = False,
+    step   = step
+  }
+
+-- missing widgets:
+-- table
+-- SOP widget
 
 
 ||| Associated definitions for `Form`.
@@ -1002,5 +1072,11 @@ testForm = form [
 partial export
 test : IO ()
 test = do
-  v <- runView $ form [F "menu" testMenu, F "nested" testForm]
+  v <- runView $ form [
+    F "menu" testMenu,
+    F "Nat" $ numeric (the Nat 5) 1,
+    F "Integer" $ numeric (the Integer 5) 1,
+    F "Double"  $ numeric ( the Double 5.0) 0.1,
+    F "nested" testForm
+  ]
   putStrLn ""
