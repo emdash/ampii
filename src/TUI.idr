@@ -363,6 +363,21 @@ namespace Geometry
   r80x24 : Rect
   r80x24 = MkRect origin (MkArea 80 24)
 
+  ||| Get the window geometry
+  |||
+  ||| XXX: handle SIGWINCH
+  export
+  screen : IO Rect
+  screen = do
+    width  <- parseEnv "COLUMNS" 80 parsePositive
+    height <- parseEnv  "LINES"  24 parsePositive
+    pure $ MkRect origin $ MkArea width height
+  where
+    parseEnv : String -> a -> (String -> Maybe a) -> IO a
+    parseEnv key def parse = case !(getEnv key) of
+      Just value => pure $ fromMaybe def $ parse value
+      Nothing    => pure def
+
   ||| shrink the rectangle by the given size
   export
   inset : Rect -> Area -> Rect
@@ -1052,8 +1067,7 @@ runTUI handler render init = do
 covering export
 runView : View state => state -> IO state
 runView init = do
-  let window = r80x24 -- XXX: get real window size
-  result <- runTUI wrapView (paint Focused window) init
+  result <- runTUI wrapView (paint Focused !(screen)) init
   pure result
 where
   wrapView : Key -> state -> Maybe state
