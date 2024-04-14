@@ -705,8 +705,8 @@ namespace Numeric
     step   : a
 
   length : Digits -> Nat
-  length (Integral  ds)    = 1 + length ds
-  length (Decimal   is ds) = max 4 (1 + length is + 1 + length ds)
+  length (Integral  ds)    = 3 + length ds
+  length (Decimal   is ds) = max 6 (3 + length is + 1 + length ds)
 
   shift : Fin 10 -> Digits -> Digits
   shift d (Integral ds)  = Integral (ds :< d)
@@ -746,12 +746,13 @@ namespace Numeric
   toDouble : Numeric a -> Maybe Double
   toDouble = parseDouble . toString
 
-  paintNumeric : State -> Rect -> Numeric a -> IO ()
-  paintNumeric state window self = do
+  paintNumeric : Char -> State -> Rect -> Numeric a -> IO ()
+  paintNumeric symbol state window self = do
+    showCharAt window.nw symbol
     case state of
         Focused => reverseVideo
-        _       => sgr [SetStyle SingleUnderline]
-    showTextAt window.nw (toString self)
+        _       => pure ()
+    showTextAt (window.nw + MkArea 2 0)  (toString self)
     sgr [Reset]
 
   handleChar : (Char -> Maybe Input) -> Char -> Numeric a -> Numeric a
@@ -770,7 +771,7 @@ namespace Numeric
   export
   View (Numeric Nat) where
     size self = MkArea (length self.digits) 1
-    paint state window self = paintNumeric state window self
+    paint state window self = paintNumeric (cast 0x2115) state window self
 
     -- ignores decimal and minus sign
     handle key = handleCommon key $ (map Digit) . charToDigit
@@ -778,7 +779,7 @@ namespace Numeric
   export
   View (Numeric Integer) where
     size self = MkArea (length self.digits) 1
-    paint state window self = paintNumeric state window self
+    paint state window self = paintNumeric (cast 0x2124) state window self
 
     -- ignores decimal
     handle key = handleCommon key special
@@ -790,7 +791,7 @@ namespace Numeric
   export
   View (Numeric Double) where
     size self = MkArea (length self.digits) 1
-    paint state window self = paintNumeric state window self
+    paint state window self = paintNumeric (cast 0x211D) state window self
 
     handle key = handleCommon key special
       where
