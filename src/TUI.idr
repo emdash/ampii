@@ -66,8 +66,8 @@ namespace Util
 
   ||| Decrement the given `Fin` without changing the bound.
   public export
-  pred : Fin n -> Fin n
-  pred FZ     = FZ
+  pred : {n : Nat} -> Fin n -> Fin n
+  pred FZ     = last
   pred (FS k) = weaken k
 
   ||| Map a function over a heterogenous vector.
@@ -619,6 +619,7 @@ namespace Menu
     handle Escape state = Escape
     handle Enter  state = Escape
     handle Left   state = Escape
+    handle Tab    state = Escape
     handle _      state = Update state
 
   ||| Construct a menu from a vector of views
@@ -905,6 +906,10 @@ namespace Form
     nextChoice = { focused $= finS }
 
     export
+    prevChoice : Form tys -> Form tys
+    prevChoice = { focused $= pred }
+
+    export
     handleEditing : Key -> Form tys -> Response (Form tys)
     handleEditing key self = case handleNth self.focused key self.fields of
       Update fields => Update $ { fields  := fields } self
@@ -913,6 +918,7 @@ namespace Form
     export
     handleDefault : Key -> Form tys -> Response (Form tys)
     -- handleDefault Up _ impossible
+    handleDefault Up     = Update . prevChoice
     handleDefault Down   = Update . nextChoice
     handleDefault Tab    = Update . nextChoice
     handleDefault Right  = Update . { editing := True }
@@ -935,13 +941,13 @@ namespace Form
     size self = self.contentSize + MkArea self.split 1
 
     paint state window self = do
-      vline (MkPos (window.w + self.split + 3) window.n) window.size.height
+      vline (MkPos  window.w                   (window.n + 1)) (window.size.height `minus` 2)
+      vline (MkPos (window.w + self.split + 3) (window.n + 1)) (window.size.height `minus` 2)
       case state of
         Focused => box window
         _       => pure ()
       paintVertical state (shrink window) self
 
-    handle Tab self = Update $ nextChoice self
     handle key self = case self.editing of
       True => handleEditing key self
       False => handleDefault key self
