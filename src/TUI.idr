@@ -216,21 +216,51 @@ namespace Geometry
     height : Nat
   %runElab derive "Area" [Eq, Ord, Show]
 
-  namespace AreaPosOps
+  ||| A rectangular screen region.
+  |||
+  ||| This is a useful concept for layout. We can abstractly refer to
+  ||| the different corners of the box.
+  public export
+  record Rect where
+    constructor MkRect
+    pos  : Pos
+    size : Area
+  %runElab derive "Rect" [Eq, Ord, Show]
+
+  namespace OverloadsPosAreaPos
     ||| Adding a point to an area returns a new point.
     public export
     (+) : Pos -> Area -> Pos
     (+) (MkPos x y) (MkArea w h) = MkPos (x + w) (y + h)
 
-    ||| The difference between two locations defines an area
+    public export
+    (-) : Pos -> Area -> Pos
+    a - v = MkPos (a.x `minus` v.width) (a.y `minus` v.height)
+
+  namespace OverloadsPosPosArea
     public export
     (-) : Pos -> Pos -> Area
     (-) a b = MkArea (a.x `diff` b.x) (a.y `diff` b.y)
 
-  namespace MovePointOps
+  namespace OverloadsNatPosPos
     public export
-    (-) : Pos -> Area -> Pos
-    a - v = MkPos (a.x `minus` v.width) (a.y `minus` v.height)
+    (*) : Nat -> Pos -> Pos
+    scalar * pos = MkPos (scalar * pos.x) (scalar * pos.y)
+
+  namespace OverloadsPosNatPos
+    public export
+    (*) : Pos -> Nat -> Pos
+    pos * scalar = MkPos (scalar * pos.x) (scalar * pos.y)
+
+  namespace OverloadsNatAreaArea
+    public export
+    (*) : Nat -> Area -> Area
+    scalar * area = MkArea (scalar * area.width) (scalar * area.height)
+
+  namespace OverloadsAreaNatArea
+    public export
+    (*) : Area -> Nat -> Area
+    area * scalar = MkArea (scalar * area.width) (scalar * area.height)
 
   ||| A width and height without a location.
   namespace Area
@@ -256,17 +286,6 @@ namespace Geometry
     export
     (-) : Area -> Area -> Area
     a - b = MkArea (a.width `minus` b.width) (a.height `minus` b.height)
-
-  ||| A rectangular screen region.
-  |||
-  ||| This is a useful concept for layout. We can abstractly refer to
-  ||| the different corners of the box.
-  public export
-  record Rect where
-    constructor MkRect
-    pos  : Pos
-    size : Area
-  %runElab derive "Rect" [Eq, Ord, Show]
 
   ||| Associated definitiosn for `Rect`.
   namespace Rect
@@ -381,16 +400,10 @@ namespace Geometry
   ||| shrink the rectangle by the given size
   export
   inset : Rect -> Area -> Rect
-  inset (MkRect (MkPos x y) (MkArea width height)) offset = MkRect {
-    pos = MkPos {
-      x = (x + offset.width),
-      y = (y + offset.height)
-    },
-    size = MkArea {
-      width = (width `minus` 2 * offset.width),
-      height = (height `minus` 2 * offset.height)
-    }
-  }
+  inset self offset = {
+    pos  $= (+ offset),
+    size := self.size - (2 * offset)
+  } self
 
   ||| Inset a rectangle uniformly by one row and column.
   export
@@ -522,6 +535,10 @@ namespace Painting
 
 ||| Associated definitions `View`.
 namespace View
+  ||| The drawing state of a view.
+  |||
+  ||| This is used by the `paint` method to provide appropriate
+  ||| feedback.
   public export
   data State = Normal | Focused | Disabled
 
@@ -572,30 +589,22 @@ namespace View
     paint _ r = showTextAt r.nw
 
 
-||| An interactive view which represents an exclusive choice.
-|||
-||| XXX: rename me
-||| this should be a "spinner" or "chooser", or "combo"
-record Menu a where
-  constructor MkMenu
-  n       : Nat
-  choices : Vect n a
-  choice  : Fin  n
-
 ||| Associated definitions for `Menu`
 namespace Menu
+  ||| An interactive view which represents an exclusive choice.
+  |||
+  ||| XXX: rename me
+  ||| this should be a "spinner" or "chooser", or "combo"
+  record Menu a where
+    constructor MkMenu
+    n       : Nat
+    choices : Vect n a
+    choice  : Fin  n
 
-  ||| A unicode up arrow
-  upArrow : String
-  upArrow = "⬆"
-
-  ||| A unicode down arrow
-  downArrow : String
-  downArrow = "⬇"
-
-  ||| A unicode up/down arrow
-  upDownArrow : String
-  upDownArrow = "⬍"
+  -- bind names to some unicode symbols we use.
+  upArrow     : String ; upArrow     = "⬆"
+  downArrow   : String ; downArrow   = "⬇"
+  upDownArrow : String ; upDownArrow = "⬍"
 
   ||| Show the arrow indicator most appropriate for the given as a
   ||| hint to the user which keys will be effective.
@@ -957,13 +966,15 @@ namespace Form
     size self = self.contentSize + MkArea self.split 1
 
     paint state window self = do
-      vline (MkPos  window.w                   (window.n + 1)) (window.size.height `minus` 2)
-      vline (MkPos (window.w + self.split + 3) (window.n + 1)) (window.size.height `minus` 2)
+      let height = window.size.height `minus` 2
+      vline (window.nw + MkArea 0 1)                height
+      vline (window.nw + MkArea (self.split + 3) 1) height
       case state of
         Focused => box window
         _       => pure ()
       paintVertical state (shrink window) self
 
+    -- dispatch events depending on editing state
     handle key self = case self.editing of
       True => handleEditing key self
       False => handleDefault key self
