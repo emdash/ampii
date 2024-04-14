@@ -26,6 +26,24 @@ import Language.JSON
 %default total
 
 
+namespace Data.String
+  ||| Truncate a string to the given length.
+  public export
+  truncateTo : Nat -> String -> String
+  truncateTo n s = pack $ take n $ unpack s
+
+  ||| Format a string into an exact width
+  |||
+  ||| Pad if length is shorter than width, truncate if longer.
+  public export
+  frameString : Nat -> String -> String
+  frameString w s =
+    let l = length s
+    in case (l < length s) of
+      True  => padRight w ' ' s
+      False => truncateTo w s
+
+
 namespace Data.Either
   ||| XXX: should be library function
   export partial

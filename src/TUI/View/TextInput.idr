@@ -1,5 +1,7 @@
+||| Minimalist terminal UI Framework
+|||
 ||| An Editable String View
-module TUI.TextInput
+module TUI.View.TextInput
 
 
 import Data.String

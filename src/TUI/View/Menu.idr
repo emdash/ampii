@@ -2,8 +2,10 @@
 module TUI.View.Menu
 
 
+import public Data.Vect
+import public Data.Vect.Quantifiers
+
 import TUI.View
-import Data.Vect
 import Util
 
 
@@ -16,6 +18,7 @@ import Util
 ||| this should be a "spinner" or "chooser", or "combo"
 |||
 ||| The choice set is of a single uniform type, unlike with form.
+export
 record Menu a where
   constructor MkMenu
   n       : Nat
