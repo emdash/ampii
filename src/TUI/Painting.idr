@@ -5,9 +5,30 @@
 ||| refactoring.
 |||
 ||| These routines are slightly higher-level than that provided by the
-||| ANSI library. In particular, they use types from `TUI.Geometry`
-||| rather than passing coordinates directly. This avoids confusion
-||| around the row-major coordinates used by terminals.
+||| `Control.ANSI` library. In particular, they use types from
+||| `TUI.Geometry` rather than passing coordinates directly. This
+||| avoids confusion around the row-major coordinates used by
+||| terminals.
+|||
+||| All of this is a bit temporary, as it would arguably be better to
+||| use ncurses or notcurses, or any other library which abstracts
+||| over terminals and their various quirks.
+|||
+||| However, on the one hand, ncurses and their ilk involve FFI, which
+||| is annoying; while, on the other hand, Idris is particularly-well
+||| suited to the the task of abstracting over and generating terminal
+||| escape sequences; and, finally, a lot has changed since the 1990s.
+|||
+||| So the goal for the moment is to implement support for various
+||| terminal features in an ad-hoc, using raw escape sequences, until
+||| this becomes too cumbersome, and at that point I'll revisit the
+||| topic.
+|||
+||| As a compromise, I intend to support some recent extensions that
+||| modern terminal emulators (like Kitty) have introduced, at the
+||| expense of compatibility with 30+y/o hardware that is no longer in
+||| common usage.
+
 module TUI.Painting
 
 
