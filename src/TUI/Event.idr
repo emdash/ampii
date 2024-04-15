@@ -78,16 +78,17 @@ decodeEsc _            = Nothing
 ||| of an escape sequence. It'd be better to use ncurses.
 export
 interpretEsc
-  :  (Key -> state -> Maybe state)
+  : Monad m
+  =>  (Key -> state -> m (Maybe state))
   -> Char
   -> EscState state
-  -> Maybe (EscState state)
+  -> m (Maybe (EscState state))
 interpretEsc f c (HaveEsc esc s) = case (decodeEsc $ esc :< c) of
-  Just Nothing    => Just $ HaveEsc (esc :< c) s
-  Just (Just key) => Default <$> (f key s)
-  Nothing         => Just $ Default s
-interpretEsc f '\ESC' (Default s) = Just $ HaveEsc [<] s
-interpretEsc f '\DEL' (Default s) = map Default $ f Delete    s
-interpretEsc f '\n'   (Default s) = map Default $ f Enter     s
-interpretEsc f '\t'   (Default s) = map Default $ f Tab       s
-interpretEsc f c      (Default s) = map Default $ f (Alpha c) s
+  Just Nothing    => pure $ Just $ HaveEsc (esc :< c) s
+  Just (Just key) => pure $ map Default !(f key s)
+  Nothing         => pure $ Just $ Default s
+interpretEsc f '\ESC' (Default s) = pure $ Just $ HaveEsc [<] s
+interpretEsc f '\DEL' (Default s) = pure $ map Default !(f Delete    s)
+interpretEsc f '\n'   (Default s) = pure $ map Default !(f Enter     s)
+interpretEsc f '\t'   (Default s) = pure $ map Default !(f Tab       s)
+interpretEsc f c      (Default s) = pure $ map Default !(f (Alpha c) s)

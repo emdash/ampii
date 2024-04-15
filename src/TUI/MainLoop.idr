@@ -24,11 +24,15 @@ import Util
 |||
 ||| SIGINT is interpreted as *Cancel*, meaning the initial state is
 ||| returned, discarding the user's changes.
+|||
+||| Handler is called to process input events. It main job is to
+||| compute the next state, but it runs in IO so that your program can
+||| take arbitrary actions in response to user input.
 export covering
 runRaw
-  :  (Char -> state -> Maybe state)
-  -> (state -> IO Builtin.Unit)
-  -> state
+  :  (handler : Char -> state -> IO (Maybe state))
+  -> (render  : state -> IO Builtin.Unit)
+  -> (init    : state)
   -> IO state
 runRaw handler render init = do
   -- default SigINT handler doesn't clean up raw mode, so we need to
@@ -77,7 +81,7 @@ where
              | Just _      => die "unexpected signal"
 
     -- handle next key press
-    case handler !getChar s of
+    case !(handler !getChar s) of
       Nothing => pure s -- we are done, quit
       Just s  => loop s () -- go to next iteration.
 
@@ -87,9 +91,9 @@ where
 ||| want to use the view abstraction for rendering screen contents.
 covering export
 runTUI
-  :  (Key -> state -> Maybe state)
-  -> (state -> IO ())
-  -> state
+  :  (handler : Key -> state -> IO (Maybe state))
+  -> (render  : state -> IO ())
+  -> (init    : state)
   -> IO state
 runTUI handler render init = do
   ret <- runRaw (interpretEsc handler) (render . unwrapEsc) (wrapEsc init)
@@ -106,9 +110,8 @@ runView init = do
   result <- runTUI wrapView (paint Focused !(screen)) init
   pure result
 where
-  wrapView : Key -> state -> Maybe state
-  wrapView k s = case handle k s of
+  wrapView : Key -> state -> IO (Maybe state)
+  wrapView k s = pure $ case handle k s of
     Update s    => Just s
-    -- effectively ignore these cases, since we're at the root.
     FocusParent => Nothing
     FocusNext   => Just s
