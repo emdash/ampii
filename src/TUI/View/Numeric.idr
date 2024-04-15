@@ -115,7 +115,7 @@ handleCommon
   : Key
   -> (Char -> Maybe Input)
   -> Numeric a
-  -> Response (Numeric a)
+  -> Response (Numeric a) action
 handleCommon (Alpha char) f = Update . (handleChar f char)
 handleCommon Delete       _ = Update . { digits := empty }
 handleCommon Left         _ = const FocusParent

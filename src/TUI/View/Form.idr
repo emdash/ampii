@@ -30,11 +30,12 @@ viewSize : Field ty -> Area
 viewSize self = size @{self.impl} self.view
 
 ||| Update field's wrapped view in response to a key event.
-handleView : Key -> Field ty -> Response (Field ty)
+handleView : Key -> Field ty -> Response (Field ty) action
 handleView k f = case handle @{f.impl} k (f.view) of
   Update new  => Update $ { view := new } f
   FocusParent => FocusParent
   FocusNext   => FocusNext
+  Run effect  => Run effect
 
 ||| A form displays a set of views, each with a string label.
 |||
@@ -106,15 +107,17 @@ handleNth
   -> Fin k
   -> Key
   -> All Field tys
-  -> Response (All Field tys)
+  -> Response (All Field tys) action
 handleNth FZ key (f :: fs) = case handleView key f of
   Update new  => Update $ new :: fs
   FocusParent => FocusParent
   FocusNext   => FocusNext
+  Run effect  => Run effect
 handleNth (FS i) key (f :: fs) = case handleNth i key fs of
-  Update fs => Update $ f :: fs
+  Update fs   => Update $ f :: fs
   FocusParent => FocusParent
-  FocusNext  => FocusNext
+  FocusNext   => FocusNext
+  Run effect  => Run effect
 
 parameters {k : Nat} {tys : Vect k Type}
   ||| Move the form to the next focused value.
@@ -131,18 +134,19 @@ parameters {k : Nat} {tys : Vect k Type}
   |||
   ||| We may need to update our editing state in response.
   export
-  handleEditing : Key -> Form tys -> Response (Form tys)
+  handleEditing : Key -> Form tys -> Response (Form tys) action
   handleEditing key self = case handleNth self.focused key self.fields of
     Update fields => Update $ { fields  := fields } self
     FocusParent   => Update $ { editing := False }  self
     FocusNext     => Update $ nextChoice            self
+    Run effect    => Run effect
 
   ||| Handles events when in navigation mode.
   |||
   ||| Up/Down change the form focus, various other keys toggle the
   ||| editing state.
   export
-  handleDefault : Key -> Form tys -> Response (Form tys)
+  handleDefault : Key -> Form tys -> Response (Form tys) action
   -- handleDefault Up _ impossible
   handleDefault Up     = Update . prevChoice
   handleDefault Down   = Update . nextChoice

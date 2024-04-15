@@ -27,8 +27,19 @@ data State = Normal | Focused | Disabled
 ||| Update      : set view to to the given state.
 ||| FocusParent : request focus be moved to the parent view.
 ||| FocusNext   : request focus be moved to the next sibling view.
+||| Run         : trigger non-local action after this iteration.
+|||
+||| `Run` is a way for a view to global, application-specific
+||| effects. The TUI framework is agnostic about the type: it's under
+||| the control of your application. If you use `runView`, it will
+||| dispatch actions to the handler you supply with the top-level
+||| state for context.
 public export
-data Response state = Update state | FocusParent | FocusNext
+data Response state action
+  = Update state
+  | FocusParent
+  | FocusNext
+  | Run action
 
 ||| A view is a high-level UI component.
 |||
@@ -48,7 +59,7 @@ interface View state where
   |||
   ||| The default implementation just shifts focus, depending on the
   ||| key-press.
-  handle : Key -> state -> Response state
+  handle : Key -> state -> Response state action
   handle Tab _ = FocusNext
   handle _   _ = FocusParent
 

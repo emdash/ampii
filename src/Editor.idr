@@ -230,7 +230,7 @@ foodForm = form [
 
 covering
 test : IO ()
-test = ignore $ runView foodForm
+test = ignore $ runView id foodForm
 
 covering
 export

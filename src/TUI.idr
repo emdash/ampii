@@ -67,7 +67,7 @@ testForm = form [
 partial export
 gallery : IO ()
 gallery = do
-  v <- runView $ form [
+  v <- runView id $ form [
     F "menu" testMenu,
     F "Nat" $ numeric (the Nat 5) 1,
     F "Integer" $ numeric (the Integer 5)  1,

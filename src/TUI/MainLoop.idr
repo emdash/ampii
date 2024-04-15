@@ -105,13 +105,18 @@ runTUI handler render init = do
 |||
 ||| This will run until the top-level view gives up its focus.
 covering export
-runView : View state => state -> IO state
-runView init = do
+runView
+  : View state
+  => (handler : action -> state -> IO state)
+  -> (init : state)
+  -> IO state
+runView handler init = do
   result <- runTUI wrapView (paint Focused !(screen)) init
   pure result
 where
   wrapView : Key -> state -> IO (Maybe state)
-  wrapView k s = pure $ case handle k s of
-    Update s    => Just s
-    FocusParent => Nothing
-    FocusNext   => Just s
+  wrapView k s = case handle k s of
+    Update s    => pure $ Just s
+    FocusParent => pure $ Nothing
+    FocusNext   => pure $ Just s
+    Run action  => pure $ Just !(handler action s)
