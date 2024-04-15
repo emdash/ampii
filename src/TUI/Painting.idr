@@ -42,6 +42,12 @@ export
 clearScreen : IO ()
 clearScreen = putStr $ eraseScreen All
 
+||| Switch into or out of the alternate screen buffer
+export
+altScreen : Bool -> IO ()
+altScreen True  = putStr $ "\ESC[?1049h"
+altScreen False = putStr $ "\ESC[?1049l"
+
 ||| Show the cursor
 export
 showCursor : IO ()

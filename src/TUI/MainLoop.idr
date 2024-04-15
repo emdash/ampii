@@ -37,6 +37,7 @@ runRaw handler render init = do
            | Left err => die "couldn't trap SigINT"
 
   -- run mainloop
+  altScreen True
   hideCursor
   saveCursor
   ret <- withRawMode err (loop init)
@@ -49,6 +50,7 @@ where
     clearScreen
     restoreCursor
     showCursor
+    altScreen False
 
   -- ensure we restore terminal state on IO error
   err : e -> IO state
