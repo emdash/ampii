@@ -24,7 +24,7 @@ import Util
 |||
 ||| SIGINT is interpreted as *Cancel*, meaning the initial state is
 ||| returned, discarding the user's changes.
-covering
+export covering
 runRaw
   :  (Char -> state -> Maybe state)
   -> (state -> IO Builtin.Unit)
