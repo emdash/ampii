@@ -20,7 +20,8 @@ import System
 import System.File
 import TUI
 import TUI.Component
-import TUI.Component.Modal
+import TUI.MainLoop
+import TUI.MainLoop.Default
 import Util
 
 
@@ -199,7 +200,7 @@ namespace SmartScale
     -> SmartScale
     -> IO $ Response SmartScale (List Raw.Container)
   withCurrentWeight f self = case self.scale of
-    Ok weight => update $ {containers $= lift $ update (f weight)} self
+    Ok weight => update $ {containers $= update (f weight)} self
     _         => ignore
 
   ||| Try to select the barcode characters we collected.
@@ -216,17 +217,14 @@ namespace SmartScale
     -- barcode is invalid, but we still need to clear the barcode chars
     Nothing => {barcode := Nothing} self
     -- valid user barcode (which is a container id), select or add.
-    Just (User id) => {containers $= lift $ findOrInsert' id} self
+    Just (User id) => {containers $= findOrInsert' id} self
     -- valid food barcode, just do our best to select it.
     -- XXX: if it's not present, or there's multiple matches, we
-    -- should pop up a dialog, but that's not yet possible.
-    Just bc => {containers $= lift $ find' bc} self
+    -- should pop up a dialog.
+    Just bc => {containers $= find' (hasBarcode bc)} self
   where
-    findOrInsert' : Id -> Zipper Raw.Container -> Zipper Raw.Container
+    findOrInsert' : Id -> VList Raw.Container -> VList Raw.Container
     findOrInsert' id self = findOrInsert (hasBarcode (User id)) (empty id Reusable) self
-
-    find' : Barcode -> Zipper Raw.Container -> Zipper Raw.Container
-    find' bc self = fromMaybe self $ find (hasBarcode bc) self
 
     validateBarcode : String -> Maybe Barcode
     validateBarcode value = fromDigits value
@@ -273,17 +271,17 @@ namespace SmartScale
         Just bc => show bc
 
   ||| All the fun stuff is in here.
-  handle : Component.Handler SmartScale (List Raw.Container)
+  handle : Component.Handler SmartScale (List Raw.Container) Key
   handle (Alpha '*') self = push (textInput "") (select self)
   handle (Alpha 'q') self = yield $ toList self.containers
-  handle (Alpha 'r') self = update $ {containers $= lift $ update $ reset} self
+  handle (Alpha 'r') self = update $ {containers $= update $ reset} self
   handle (Alpha 's') self = withCurrentWeight setGross self
   handle (Alpha 't') self = withCurrentWeight setTear  self
-  handle Up          self = update $ {containers $= lift $ goLeft} self
-  handle Down        self = update $ {containers $= lift $ goRight} self
-  handle Delete      self = update $ {containers $= lift $ delete} self
+  handle Up          self = update $ {containers $= goLeft} self
+  handle Down        self = update $ {containers $= goRight} self
+  handle Delete      self = update $ {containers $= delete} self
   handle Enter       self = withCurrentWeight setGross self
-  handle Tab         self = update $ {containers $= lift $ goRight} self
+  handle Tab         self = update $ {containers $= goRight} self
   handle Escape      self = exit
   handle _           self = ignore
 
@@ -303,7 +301,7 @@ namespace SmartScale
   ||| Main entry point1
   export covering
   run : IO ()
-  run = ignore $ runComponent (smartscale []) {-
+  run = Prelude.ignore $ runComponent !getDefault (smartscale []) {-
     On "Scale" onScale,
     On "Image" onImage
   ] -}

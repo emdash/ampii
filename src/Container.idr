@@ -188,10 +188,10 @@ View (ContainerB _) where
   size _ = MkArea (14 + 10 + 10 + 10) 1
 
   paint state window self = do
-    let (top,     bottom) = vsplit window 1
-    let (barcode, top   ) = hsplit top 13
-    let (tear,    top   ) = hsplit top 10
-    let (gross,   net   ) = hsplit top 10
+    let (top,     bottom) = window.splitTop 1
+    let (barcode, top   ) = top.splitLeft 13
+    let (tear,    top   ) = top.splitLeft 10
+    let (gross,   net   ) = top.splitLeft 10
     paint @{show} state barcode (User self.id)
     paint @{show} state tear    self.tear
     paint @{show} state gross   self.gross

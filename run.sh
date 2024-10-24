@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 
+shopt -s checkwinsize ; (:;:)
+
+export LINES
+export COLUMNS
 export AMPII_DB_PATH=database
 export AMPII_SCALE_PATH=/dev/hidraw0
+export IDRIS_TUI_MAINLOOP=input-shim
 
 function localURL {
     echo "http://$(hostname -I | cut -d ' ' -f 1):8000"

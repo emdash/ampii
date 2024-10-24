@@ -22,7 +22,6 @@ import System
 import Inventory
 import USBScale
 import TUI
-import Editor
 
 
 %default total
@@ -33,8 +32,6 @@ partial
 dispatch : String -> List String -> IO ()
 dispatch "inventory" rest = pure () -- Inventory.main rest
 dispatch "scale"     rest = USBScale.main rest
-dispatch "test"      _    = TUI.gallery
-dispatch "editor"    rest = Editor.main rest
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
 ||| Main entry point.

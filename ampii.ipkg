@@ -22,6 +22,7 @@ depends = contrib
 	, algebra
 	, date
 	, quantifiers-extra
+	, tui
 
 -- modules to install
 modules = Container

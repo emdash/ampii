@@ -12,5 +12,11 @@ ipkg = "test.ipkg"
 [custom.all.date]
 type   = "github"
 url    = "https://github.com/emdash/idris-datetime"
-commit = "latest:main"
+commit = "fetch-latest:main"
 ipkg   = "date.ipkg"
+
+[custom.all.tui]
+type   = "github"
+url    = "https://github.com/emdash/idris2-tui"
+commit = "fetch-latest:main"
+ipkg   = "tui.ipkg"
