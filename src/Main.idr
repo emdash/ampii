@@ -19,6 +19,7 @@
 module Main
 
 import System
+import Food
 import Inventory
 import USBScale
 import TUI
@@ -30,6 +31,7 @@ import TUI
 ||| Dispatch according to our args.
 partial
 dispatch : String -> List String -> IO ()
+dispatch "food"      rest = Food.main rest
 dispatch "inventory" rest = pure () -- Inventory.main rest
 dispatch "scale"     rest = USBScale.main rest
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)

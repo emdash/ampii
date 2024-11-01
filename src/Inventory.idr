@@ -198,7 +198,8 @@ parse _                      = Nothing
 
 {- Configuration -------------------------------------------------------------}
 
-||| Declare table of food records.
+{-
+||| declare table of food records.
 Row Food where
   PrimaryKey = Barcode
   primaryKey = (.barcode)
@@ -224,6 +225,7 @@ ForeignKey Raw.Container Food where
   Join                 = Joined.Container
   foreignKey cont      = cont.food
   joinValue  cont food = Just $ {food := Just food} cont
+-}
 
 ||| This is the config for our inventory database.
 record Config where
@@ -235,6 +237,8 @@ record Config where
 ||| Construct the configuration from environment variables.
 covering
 getConfig : IO Config
+
+{-
 getConfig = do
   Just scale <- getEnv "AMPII_SCALE_PATH" | Nothing => die "No scale path"
   Just db    <- getEnv "AMPII_DB_PATH"    | Nothing => die "No database path"
@@ -243,10 +247,12 @@ getConfig = do
   pure $ MkConfig scale f c
 
 {- Command Processing --------------------------------------------------------}
+-}
 
 0 Result : Type -> Type
 Result a = IO (Either Error a)
 
+{-
 ok : a -> Inventory.Result a
 ok x = pure $ Right x
 
@@ -263,9 +269,11 @@ runPrompt cfg (QueryFood y) = ?runPrompt_rhs_2
 runPrompt cfg ChooseFood = ?runPrompt_rhs_3
 runPrompt cfg (QueryId y) = ?runPrompt_rhs_4
 runPrompt cfg ChooseId = ?runPrompt_rhs_5
+-}
 
 covering
-run : Config -> Command -> Inventory.Result Builtin.Unit
+run : Config -> Command -> Inventory.Result ()
+{-
 run cfg (Search q) = do
   Right containers <- select cfg.containers | Left e => fail e
   Right foods <- select cfg.foods | Left e => fail e
@@ -299,7 +307,7 @@ run cfg (Delete id) = do
   ok ()
 
 {- Entry Point ---------------------------------------------------------------}
-
+-}
 
 ||| Entry point for the `inventory` subcommand.
 partial export

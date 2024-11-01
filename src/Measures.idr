@@ -95,29 +95,79 @@ data Div : (a : Dimension) -> (b : Dimension) -> Dimension -> Type where
 ||| Note that there's deliberately no data constructor for
 ||| `Unit NotImplemented`
 public export
-data Unit : Dimension -> Type where
-  S           : Unit Scalar
-  Ounces      : Unit Mass
-  Pounds      : Unit Mass
-  Grams       : Unit Mass
-  MilliGrams  : Unit Mass
-  KiloGrams   : Unit Mass
-  Gallons     : Unit Volume
-  Quarts      : Unit Volume
-  Pints       : Unit Volume
-  Cups        : Unit Volume
-  FluidOunces : Unit Volume
-  TableSpoons : Unit Volume
-  TeaSpoons   : Unit Volume
-  MilliLiters : Unit Volume
-  Liters      : Unit Volume
-  GramsPerML  : Unit Density
-%runElab deriveIndexed "Unit" [Eq, Ord]
+data UnitT : Dimension -> Type where
+  S           : UnitT Scalar
+  Ounces      : UnitT Mass
+  Pounds      : UnitT Mass
+  Grams       : UnitT Mass
+  MilliGrams  : UnitT Mass
+  KiloGrams   : UnitT Mass
+  Gallons     : UnitT Volume
+  Quarts      : UnitT Volume
+  Pints       : UnitT Volume
+  Cups        : UnitT Volume
+  FluidOunces : UnitT Volume
+  TableSpoons : UnitT Volume
+  TeaSpoons   : UnitT Volume
+  MilliLiters : UnitT Volume
+  Liters      : UnitT Volume
+  GramsPerML  : UnitT Density
+%runElab deriveIndexed "UnitT" [Eq, Ord]
 
+||| Get the list of supported units of mass.
+public export
+Units : {d : Dimension} -> List (UnitT d)
+Units {d = Scalar} = [S]
+Units {d = Mass} = [
+  Ounces,
+  Pounds,
+  Grams,
+  MilliGrams,
+  KiloGrams
+]
+Units {d = Volume} = [
+  Gallons,
+  Quarts,
+  Pints,
+  Cups,
+  FluidOunces,
+  TableSpoons,
+  TeaSpoons,
+  MilliLiters,
+  Liters
+]
+Units {d = Density} = [GramsPerML]
+
+||| XXX: this feels really boiler-platey, need some meta-programming
+||| solution for this.
+|||
+||| Perhaps via the `finite` package.
+export
+%hint
+0 unitInUnits
+  :  {auto 0 d : Dimension}
+  -> {auto 0 u : UnitT d}
+  -> IsJust (findIndex (u ==) Units)
+unitInUnits {d = Scalar, u = S} = ItIsJust
+unitInUnits {d = Mass, u = Ounces} = ItIsJust
+unitInUnits {d = Mass, u = Pounds} = ItIsJust
+unitInUnits {d = Mass, u = Grams} = ItIsJust
+unitInUnits {d = Mass, u = MilliGrams} = ItIsJust
+unitInUnits {d = Mass, u = KiloGrams} = ItIsJust
+unitInUnits {d = Volume, u = Gallons} = ItIsJust
+unitInUnits {d = Volume, u = Quarts} = ItIsJust
+unitInUnits {d = Volume, u = Pints} = ItIsJust
+unitInUnits {d = Volume, u = Cups} = ItIsJust
+unitInUnits {d = Volume, u = FluidOunces} = ItIsJust
+unitInUnits {d = Volume, u = TableSpoons} = ItIsJust
+unitInUnits {d = Volume, u = TeaSpoons} = ItIsJust
+unitInUnits {d = Volume, u = MilliLiters} = ItIsJust
+unitInUnits {d = Volume, u = Liters} = ItIsJust
+unitInUnits {d = Density, u = GramsPerML} = ItIsJust
 
 ||| Convert a unit to its short form
 public export
-{d : Dimension} -> Show (Unit d) where
+{0 d : Dimension} -> Show (UnitT d) where
   show S           = ""
   show Ounces      = "oz"
   show Pounds      = "lb"
@@ -135,7 +185,6 @@ public export
   show Liters      = "L"
   show GramsPerML  = "g/mL"
 
-
 ||| An amount of some stuff with an associated unit.
 |||
 ||| Quantities are indexed over the dimensionality of the unit.
@@ -143,11 +192,11 @@ public export
 record Quantity (d : Dimension) where
   constructor Q
   amount : Double
-  unit   : Unit d
+  unit   : UnitT d
 %runElab deriveIndexed "Quantity" [Eq, Ord]
 
 ||| Table of conversion factors expressed in terms of the base unit.
-conv : Unit d -> Double
+conv : UnitT d -> Double
 conv S           = 1.0
 conv Ounces      = 28.3492
 conv Pounds      = 28.3492 * 16
@@ -166,7 +215,7 @@ conv Liters      = 1000.0
 conv GramsPerML  = 1.0
 
 ||| Table of base units for the given dimension
-baseUnit : {d : Dimension} -> Unit d
+baseUnit : {d : Dimension} -> UnitT d
 baseUnit {d = Scalar}  = S
 baseUnit {d = Mass}    = Grams
 baseUnit {d = Volume}  = MilliLiters
@@ -181,7 +230,7 @@ normalize (Q amount u) = Q (conv u * amount) baseUnit
 |||
 ||| Use it like: `5.Gal \`as\` Liters`
 public export
-as : {d : Dimension} -> Quantity d -> Unit d -> Quantity d
+as : {d : Dimension} -> Quantity d -> UnitT d -> Quantity d
 as x u = Q ((normalize x).amount / (conv u)) u
 
 ||| Multiply two quantities
@@ -258,7 +307,7 @@ public export (.L)    : Abr Volume ; (.L)    x = Q x Liters
 
 ||| Parse a given unit abbreviation.
 public export
-unitFromString : {d : Dimension} -> String -> Maybe (Unit d)
+unitFromString : {d : Dimension} -> String -> Maybe (UnitT d)
 unitFromString {d = Scalar} ""     = Just S
 unitFromString {d = Mass  } "oz"   = Just Ounces
 unitFromString {d = Mass  } "lb"   = Just Pounds
@@ -290,7 +339,7 @@ public export
   show (Q a u) = "\{show a}\{show u}"
 
 ||| Parse a unit from a JSON value.
-parseUnit : {d : Dimension} -> Parser String (Unit d)
+parseUnit : {d : Dimension} -> Parser String (UnitT d)
 parseUnit u = case (unitFromString u) of
   Nothing => fail "unrecognized unit \{u}"
   Just u  => Right u
@@ -302,7 +351,7 @@ parseQuantity q = case (quantityFromString q) of
   Just q  => Right q
 
 public export
-{d : Dimension} -> FromJSON (Unit d) where
+{d : Dimension} -> FromJSON (UnitT d) where
   fromJSON = withString "Unit \{show d}" parseUnit
 
 public export

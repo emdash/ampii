@@ -13,8 +13,6 @@ import TUI
 %language ElabReflection
 
 
-%hide Measures.Unit
-
 
 ||| The type of container IDs.
 |||

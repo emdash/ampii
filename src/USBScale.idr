@@ -36,11 +36,11 @@ debug value = do
   pure ()
 
 ||| Unit to use when we can't determine from the USB traffic
-defaultUnit : Unit Mass
+defaultUnit : UnitT Mass
 defaultUnit = Grams
 
 ||| Convert integer unit into type
-units : Bits8 -> Unit Mass
+units : Bits8 -> UnitT Mass
 units 1  = MilliGrams
 units 2  = Grams
 units 3  = KiloGrams
@@ -147,13 +147,6 @@ spawn : String -> (Result -> IO Builtin.Unit) -> IO ThreadID
 spawn path post = fork (run post path)
 
 namespace SmartScale
-  {- XXX: I've had to do this a few times, and argues for renaming
-     `Measures.Unit` to something else, in spite of the fact that
-     this is the proper name. Unfortunately, `Unit` is specal in
-     Idris, as it is what `()` desugars to. So when Measures.Unit is
-     in scope, it picks up this, and causes issues. `Unit` should
-     perhaps be considered a reserved word in light of this. -}
-  %hide Measures.Unit
   ||| An MVP of my "Smart Scale" concept
   |||
   ||| Basically: we have a list of containers, a web server that
