@@ -41,6 +41,23 @@ import TUI.Component.FocusRing
 %language ElabReflection
 
 
+||| Nutritional data
+public export
+0 Nutrition : Type
+Nutrition = SortedMap String Weight
+
+||| Abstract food type
+public export
+record Food where
+  constructor MkFood
+  name        : String
+  brand       : String
+  barcode     : Barcode
+  servingSize : Weight
+  calories    : Double
+  nutrition   : Nutrition
+%runElab derive "Food" [Show, Eq, ToJSON, FromJSON]
+
 ||| A spinner widget which contains all the units valid for `d`
 export
 unitSelector : {d : Dimension} -> UnitT d -> Component (UnitT d)
@@ -68,20 +85,12 @@ quantityC q = mapMaybe validate $ FocusRing.horizontal {
   onKey Escape self = exit
   onKey k      self = handleSelected k self
 
-||| Nutritional data
-public export
-record NutritionB f where
-  constructor N
-  servingSize : f Weight
-  values : f (SortedMap String Weight)
-%runElab derive "NutritionB" [Show, Eq, ToJSON, FromJSON]
-
 ||| Nutrient input
 ||| A numeric input and a quantity selector.
-nutrientsC
-  : SortedMap String Weight
-  -> Component (List $ All Maybe [String, Double, UnitT Mass])
-nutrientsC values = table {
+nutritionC
+  :  SortedMap String Weight
+  -> Component (SortedMap String Weight)
+nutritionC values = validate <$> table {
   labels = ["Nutrient", "Amount", "Unit"],
   rows = mkRow <$> toList values,
   onKey = onKey
@@ -95,6 +104,15 @@ nutrientsC values = table {
   0 ValueT : Type
   ValueT = All Maybe Tys
 
+  validate : List ValueT -> SortedMap String Weight
+  validate rows = fromList $ mapRows rows
+    where
+      mapRows : List ValueT -> List (String, Weight)
+      mapRows [] = []
+      --- XXX: UGGGGGLLYYYYYYYYYY!!!!!
+      mapRows ([Just name, Just amount, Just unit] :: xs) = (name, Q amount unit) :: mapRows xs
+      mapRows (_ :: xs) = mapRows xs
+
   mkRow : (String, Weight) -> RowT
   mkRow (nutrient, Q amount unit) = [
     textInput nutrient,
@@ -102,6 +120,9 @@ nutrientsC values = table {
     unitSelector unit
   ]
 
+  ||| Do some ad-hoc key handling for now.
+  |||
+  ||| Composition of components is still not quite right.
   onKey : Component.Handler (Table Tys) (List ValueT) Key
   onKey Left        self = update $ goLeft self
   onKey Right       self = update $ goRight self
@@ -114,72 +135,63 @@ nutrientsC values = table {
   onKey (Alpha ']') self = handleSelected Down self
   onKey k           self = handleSelected k self
 
-0 Nutrition : Type
-Nutrition = NutritionB id
+-- Style note: this is starting to look like what I'd imagined. There
+-- is some funky punctuation here and there, but the fact that this is
+-- a *form* comes shining through all the line noise.
+--
+-- it almost even works, except that it hangs on submit.
+foodC : Food -> Component Food
+foodC food = validate <$> ariaForm [
+  F "Name"         $ textInput food.name,
+  F "Brand"        $ textInput food.brand,
+  F "Barcode"      $ mapMaybe fromDigits $ textInput $ show food.barcode,
+  F "Serving Size" $ quantityC food.servingSize,
+  F "Calories"     $ numeric food.calories,
+  F "Nutrition"    $ nutritionC food.nutrition
+] where
+  validate : HVect [
+    String,
+    String,
+    Barcode,
+    Quantity Mass,
+    Double,
+    SortedMap String (Quantity Mass)
+  ] -> Food
+  validate [
+    name,
+    brand,
+    barcode,
+    servingSize,
+    calories,
+    nutrition
+  ] = MkFood {
+    name = name,
+    brand = brand,
+    barcode = barcode,
+    servingSize,
+    calories,
+    nutrition
+  }
 
-{-
-nutritionForm : Nutrition -> Component Nutrition
-nutritionForm n = mapMaybe validate $ FocusRing.vertical {
-  items = [quantityC n.servingSize, vlist header toList onListKey],
-  selection = 0,
-  onKey = onTopLevelKey
-} where
-  onListKey : Component.Handler (VList 
---nutritionForm = ariaForm 
--}
+partial
+missionWholeWheatOriginal : Food
+missionWholeWheatOriginal = MkFood {
+  name  = "Whole Wheat, Original, Super Soft",
+  brand = "Mission Foods",
+  barcode = fromString "073731071076",
+  servingSize = 45.g,
+  calories = 110,
+  nutrition = fromList $ [
+    ("Fat", 2.g),
+    ("Sodium", 380.mg),
+    ("Dietary Fiber", 5.g),
+    ("Total Sugars", 1.g),
+    ("Protein", 4.g)
+  ]
+}
 
-||| Abstract food type
-public export
-record FoodB f where
-  constructor MkFood
-  name:         f String
-  brand:        f $ String
-  barcode:      f $ Barcode
-  nutrition:    f $ Nutrition
-%runElab derive "FoodB" [Show, Eq, ToJSON, FromJSON]
-
-||| A complete, valid food record that can be stored in a database.
-public export 0 Food : Type ; Food = FoodB id
-
-{-
-foodForm : Food -> Component Food
-foodForm food = 
--}
-
-export
-View (Food) where
-  size = ?hsize
-  paint state window self = ?hpaint
-
-{-
-||| Construct a food from a food editor.
-validate : FoodEditor -> Maybe Food
-validate self = do
-  Just $ MkFood
-    !self.name
-    !self.brand
-    !self.barcode
-    !self.nutrition
-
-editor : Food -> FoodEditor
-editor self = MkFood
-  (Just self.name)
-  (Just self.brand)
-  (Just self.barcode)
-  (Just self.nutrition)
--}
-
-testNutrients : SortedMap String Weight
-testNutrients = fromList $ [
-  ("Fat", 2.g),
-  ("Sodium", 380.mg),
-  ("Dietary Fiber", 5.g),
-  ("Total Sugars", 1.g),
-  ("Protein", 4.g)
-]
-
-export
+export partial
 main : List String -> IO ()
 main [] = do
-  putStrLn $ show $ !(runComponent !getDefault (nutrientsC testNutrients))
+  putStrLn $ show $ !(runComponent !getDefault (foodC missionWholeWheatOriginal))
 main _ = die "Invalid subcommand"
