@@ -20,11 +20,18 @@ data Barcode
   | User  (Vect 4  Char)
 %runElab derive "Barcode" [Eq,Ord, FromJSON, ToJSON]
 
+||| Convert barcode to a string without length prefix.
+export
+toString : Barcode -> String
+toString (EAN13 bc) = pack $ toList bc
+toString (UPC   bc) = pack $ toList bc
+toString (User  bc) = pack $ toList bc
+
 export
 Show Barcode where
   show (EAN13 bc) = "EAN13:" ++ pack (toList bc)
-  show (UPC   bc) = "UPC:" ++ pack (toList bc)
-  show (User  bc) = "User:" ++ pack (toList bc)
+  show (UPC   bc) = "UPC:"   ++ pack (toList bc)
+  show (User  bc) = "User:"  ++ pack (toList bc)
 
 ||| Barcodes are serialized as a string with the standard prefixed.
 export
@@ -92,3 +99,4 @@ export
 %hint
 viewImpl : View Barcode
 viewImpl = show
+ 

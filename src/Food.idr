@@ -35,7 +35,7 @@ import TUI.Component
 import TUI.Component.Form
 import TUI.Component.Table
 import TUI.Component.FocusRing
-
+import TUI.Util
 
 %default total
 %language ElabReflection
@@ -43,8 +43,18 @@ import TUI.Component.FocusRing
 
 ||| Nutritional data
 public export
-0 Nutrition : Type
-Nutrition = SortedMap String Weight
+Nutrition : Type
+Nutrition = SortedMap String (Quantity Mass)
+
+||| Single Nutrient Datum
+public export
+Nutrient : Type
+Nutrient = (String, Quantity Mass)
+
+||| Construct a nutrient from its values
+public export
+nutrient : String -> Double -> UnitT Mass -> Nutrient
+nutrient name amount unit = (name, Q amount unit)
 
 ||| Abstract food type
 public export
@@ -53,7 +63,7 @@ record Food where
   name        : String
   brand       : String
   barcode     : Barcode
-  servingSize : Weight
+  servingSize : Quantity Mass
   calories    : Double
   nutrition   : Nutrition
 %runElab derive "Food" [Show, Eq, ToJSON, FromJSON]
@@ -86,34 +96,28 @@ quantityC q = mapMaybe validate $ FocusRing.horizontal {
   onKey k      self = handleSelected k self
 
 ||| Nutrient input
-||| A numeric input and a quantity selector.
 nutritionC
   :  SortedMap String Weight
   -> Component (SortedMap String Weight)
-nutritionC values = validate <$> table {
+nutritionC values = mapMaybe validate $ table {
   labels = ["Nutrient", "Amount", "Unit"],
   rows = mkRow <$> toList values,
   onKey = onKey
 } where
+  ||| The type of each column in the table
   Tys : Vect 3 Type
   Tys = [String, Double, UnitT Mass]
 
-  0 RowT : Type
-  RowT = All Component Tys
+  ||| Try to convert one row of the table into a nutrient value
+  validateRow : All Maybe Tys -> Maybe Nutrient
+  validateRow values = happly nutrient <$> allIsJust values
 
-  0 ValueT : Type
-  ValueT = All Maybe Tys
+  ||| Try to validate the entire table.
+  validate : List (All Maybe Tys) -> Maybe (SortedMap String Weight)
+  validate rows = insertFrom' empty <$> traverse validateRow rows
 
-  validate : List ValueT -> SortedMap String Weight
-  validate rows = fromList $ mapRows rows
-    where
-      mapRows : List ValueT -> List (String, Weight)
-      mapRows [] = []
-      --- XXX: UGGGGGLLYYYYYYYYYY!!!!!
-      mapRows ([Just name, Just amount, Just unit] :: xs) = (name, Q amount unit) :: mapRows xs
-      mapRows (_ :: xs) = mapRows xs
-
-  mkRow : (String, Weight) -> RowT
+  ||| Construct a new table row.
+  mkRow : (String, Weight) -> All Component Tys
   mkRow (nutrient, Q amount unit) = [
     textInput nutrient,
     numeric amount,
@@ -123,7 +127,7 @@ nutritionC values = validate <$> table {
   ||| Do some ad-hoc key handling for now.
   |||
   ||| Composition of components is still not quite right.
-  onKey : Component.Handler (Table Tys) (List ValueT) Key
+  onKey : Component.Handler (Table Tys) (List (All Maybe Tys)) Key
   onKey Left        self = update $ goLeft self
   onKey Right       self = update $ goRight self
   onKey Up          self = update $ goUp self
@@ -135,43 +139,15 @@ nutritionC values = validate <$> table {
   onKey (Alpha ']') self = handleSelected Down self
   onKey k           self = handleSelected k self
 
--- Style note: this is starting to look like what I'd imagined. There
--- is some funky punctuation here and there, but the fact that this is
--- a *form* comes shining through all the line noise.
---
--- it almost even works, except that it hangs on submit.
 foodC : Food -> Component Food
-foodC food = validate <$> ariaForm [
+foodC food = happly MkFood <$> ariaForm [
   F "Name"         $ textInput food.name,
   F "Brand"        $ textInput food.brand,
-  F "Barcode"      $ mapMaybe fromDigits $ textInput $ show food.barcode,
+  F "Barcode"      $ mapMaybe fromDigits $ textInput $ toString food.barcode,
   F "Serving Size" $ quantityC food.servingSize,
   F "Calories"     $ numeric food.calories,
   F "Nutrition"    $ nutritionC food.nutrition
-] where
-  validate : HVect [
-    String,
-    String,
-    Barcode,
-    Quantity Mass,
-    Double,
-    SortedMap String (Quantity Mass)
-  ] -> Food
-  validate [
-    name,
-    brand,
-    barcode,
-    servingSize,
-    calories,
-    nutrition
-  ] = MkFood {
-    name = name,
-    brand = brand,
-    barcode = barcode,
-    servingSize,
-    calories,
-    nutrition
-  }
+]
 
 partial
 missionWholeWheatOriginal : Food
