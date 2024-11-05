@@ -18,17 +18,25 @@
 
 module Main
 
-
 import System
+import Food
 import Inventory
 import USBScale
+import TUI
 
+
+%default total
+
+
+||| Dispatch according to our args.
 partial
 dispatch : String -> List String -> IO ()
-dispatch "inventory" rest = Inventory.main rest
+dispatch "food"      rest = Food.main rest
+dispatch "inventory" rest = pure () -- Inventory.main rest
 dispatch "scale"     rest = USBScale.main rest
 dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 
+||| Main entry point.
 partial
 main : IO ()
 main = do
@@ -37,3 +45,4 @@ main = do
     []              => putStrLn "Impossible"
     [_]             => putStrLn "No subcommand"
     _ :: sc :: rest => dispatch sc rest
+

@@ -21,205 +21,208 @@
 module Recipes
 
 
+import Derive.Prelude
 import Measures
 import Food
 
 
-
-||| All physical unit abbreviations in a flat enumeration
-public export 
-data Unit
-  -- weight
-  = Oz
-  | Lb
-  | Gram 
-  | Gal
-  -- volume
-  | Qt
-  | Pt
-  | C
-  | Floz
-  | Tblsp
-  | Tsp
-  | ML
-  | L
-  -- size
-  | Small
-  | Med
-  | Reg
-  | Large
-  | XLarge
-  | Jumbo
-  | Whole  -- size unspecified
+%default total
+%language ElabReflection
 
 
-||| An ingredient of in a recipe, with its quantity and unit
-public export 
-data Ingredient = Item Double Recipes.Unit String
-
+||| An entry in a recipe's ingredient list.
+|||
+||| I find it interesting that the most natural form of these
+||| constructors are verbs.
+|||
+||| I tried making `Ingredient` a dependent record indexed over
+||| dimension, but Idris doesn't quite like this. So, instead, I made
+||| `Ingredient` a sum type, with explicit constructors for each
+||| supported Dimension.
+|||
+||| Originally, I used passive constructors: `ByWeight`, `ByVolume`,
+||| `ByEach`. But I felt it looked odd, and I felt them tedious to
+||| write. So I 'verbed' them, and I like it better: before I 'verbed'
+||| the constructors, I thought of Ingredients as data; after
+||| 'verbing', I realized: an ingredient is *also* an *instruction* to
+||| the chef.
+|||
+||| Before 'verbing': an ingredient quantified by density was legal;
+||| after 'verbing': it's impossible to quantify an ingredient by
+||| density. In case it isn't: an ingredient is an *amount* of
+||| something. It is a quantiy given by *mass*. In other words, an
+||| ingredient cannot be a *ratio* of *mass* to *volume*. It must be
+||| *either* a mass *or* a volume.
+public export
+data Ingredient
+  = Weigh   (Quantity Mass)   food
+  | Measure (Quantity Volume) food
+  | Take    (Quantity Scalar) food
 
 ||| A Recipe is a list of ingredient quantities, plus metadata.
+|||
+||| An *ingredient* represents an amount of something, while the
+||| recipe as a whole expresses the *ratios between ingredients*.
+|||
+||| The best historical recipes directly express the proportions
+||| between ingredients, rather than the concrete units of the day.
+|||
+||| TBD: add the following fields;
+|||   url:          String
+|||   description:  String
+|||   image:        String
+|||   author:       String
+|||   instructions: List Instruction
 public export
-record Recipe where
+record Recipe (food: Type) where
   constructor Rx
-  name: String
-  servings: Nat
-  ingredients: List Ingredient
+  name:         food
+  yield:        Quantity Mass
+  ingredients:  List Ingredient
 
-
-||| Recipes are compared by name
-export 
-Eq Recipe where
-  x == y = (name x) == (name y)
-
-
-||| Recipes are ordered by name
-export 
-Ord Recipe where
-  compare x y = compare (name x) (name y)
-
-
-
-||| A hard-coded, static recipe database.
+||| A hard-coded, static recipe database for testing.
 |||
-||| Each Recipe is identified by a short string key.
+||| The yields given here are totaly bogus and made up, so keep that
+||| in mind. This is probably bigger than it needs to be, but I can
+||| always pare it down later.
 |||
-||| Eventually the goal would be to support some standard file format,
-||| like meal-master, etc, and reading these off the filesystem. But,
-||| at this point I don't know enough about Idris to do that.
+||| Originally I had figured I would manually encode recipes, but I
+||| already have too many recipes for that.
 |||
-||| For now, each are encoded by hand using the DSL defined in this
-||| file.
+||| This intended to be test data, keep it in sync with the official
+||| file format.
 export total
-recipes : String -> Recipe
-recipes n@"French Toast" = Rx n 1 [
-  Item  2.0  Large  "Egg",
-  Item  2.0  Whole  "Bread Slice",
-  Item  1.0  Tblsp  "Butter",
-  Item  1.0  Tblsp  "Maple Syrup"
+recipes : String -> Recipe String
+recipes n@"French Toast" = Rx n 250.g [
+  Take     2.0.whole "Large Egg",
+  Take     2.0.whole "Bread Slice",
+  Measure  1.0.T     "Butter",
+  Measure  1.0.T     "Maple Syrup"
 ]
 -- https://youtu.be/L76XJqz9PWo
 -- XXX: this recipe is incomplete (and open-ended)
-recipes n@"Shakshuka" = Rx n 2 [
-  Item  2.0  Large "Egg",
-  Item 14.5  Oz    "Diced Tomatoes"
+recipes n@"Shakshuka" = Rx n 250.g [
+  Take     2.0.whole "Large Egg",
+  Weigh   14.5.oz    "Diced Tomatoes"
 ]
-recipes n@"Toaster Pizza" = Rx n 1 [
-  Item  1.0  Med   "Tortilla",
-  Item  1.5  Tblsp "Pizza Sauce",
-  Item  1.5  Oz    "Mozarella",
-  Item  1.5  Oz    "Italian Sausage"
+recipes n@"Toaster Pizza" = Rx n 250.g [
+  Take     2.0.whole "Medium Tortilla",
+  Measure  1.5.T     "Pizza Sauce",
+  Weigh    1.5.oz    "Mozarella",
+  Weigh    1.5.oz    "Italian Sausage"
 ]
 -- https://www.thespruceeats.com/stuffed-eggplant-little-shoes-1705821
-recipes n@"Greek Stuffed Eggplant" = Rx n 6 [
-  Item  1.5  Small "Eggplant",         
-  Item  1.5  Lb    "Ground Beef",
-  Item  1.5  Med   "Garlic Clove",
-  Item  1.5  Med   "Onion",            
-  Item  1.5  C     "Parsley",
-  Item  1.5  Tblsp "Olive Oil",
-  Item  1.5  C     "Grated Parmesian",
-  Item  1.5  Med   "Tomato",
-  Item  1.5  Tblsp "All Purpose Flour",
-  Item  1.5  Tblsp "Butter",
-  Item  1.5  C     "Milk",             
-  Item  1.5  ML    "Ground Nutmeg"
+recipes n@"Greek Stuffed Eggplant" = Rx n 500.g [
+  Take     1.5.whole  "Small Eggplant",
+  Weigh    1.5.lb     "Ground Beef",
+  Take     1.5.whole  "Garlic Clove",
+  Take     1.5.whole  "Medium Onion",
+  Measure  1.5.C      "Parsley",
+  Measure  1.5.T      "Olive Oil",
+  Measure  1.5.C      "Grated Parmesian",
+  Take     1.5.whole  "Tomato",
+  Measure  1.5.T      "All Purpose Flour",
+  Measure  1.5.T      "Butter",
+  Measure  1.5.C      "Milk",
+  Measure  1.5.mL     "Ground Nutmeg"
 ]
 -- https://www.thespruceeats.com/creole-shrimp-etouffee-3060807
-recipes n@"Creole Shrimp Etouffee" = Rx n 6 [
-  Item  7.0  Tblsp "Butter",                      
-  Item  6.0  Tblsp "All Purpose Flour",
-  Item  1.0  Large "Onion",                       
-  Item  1.5  C     "Celery",                      
-  Item  1.0  C     "Green Bell Pepper",
-  Item  3.0  Large "Garlic Clove",                
-  Item  8.0  Floz  "Shrimp Stock / Clam Juice",
-  Item 14.5  Floz  "Diced Tomatoes",              
-  Item  2.0  Tblsp "Creole Seasoning (Salt Free)",
-  Item  0.2  Tsp   "Black Pepper",
-  Item  1.0  Large "Bay Leaf",                    
-  Item  1.5  Lb    "Shrimp (Peeled and Deveined)",
-  Item  2.0  C     "Cooked Rice"
+recipes n@"Creole Shrimp Etouffee" = Rx n 1.Kg [
+  Measure  7.0.T     "Butter",
+  Measure  6.0.T     "All Purpose Flour",
+  Take     1.0.whole "Large Onion",
+  Measure  1.5.C     "Celery",
+  Measure  1.0.C     "Green Bell Pepper",
+  Take     3.0.whole "Large Garlic Clove",
+  Measure  8.0.floz  "Shrimp Stock / Clam Juice",
+  Measure 14.5.floz  "Diced Tomatoes",
+  Measure  2.0.T     "Creole Seasoning (Salt Free)",
+  Measure  0.2.t     "Black Pepper",
+  Take     1.0.whole "Large Bay Leaf",
+  Weigh    1.5.lb    "Shrimp (Peeled and Deveined)",
+  Measure  2.0.C     "Cooked Rice"
 ]
 -- https://cooking.nytimes.com/recipes/1021339-ramen-with-charred-scallions-green-beans-and-chile-oil
-recipes n@"Ramen with Scallions" = Rx n 4 [
-  Item  2.0  Tblsp "Red Pepper Flakes",
-  Item  1.5  Tsp   "Kosher Salt",
-  Item  0.5  C     "Grapeseed Oil",
-  Item  0.5  Whole "Ginger Root",               
-  Item  2.0  Whole "Garlic Clove",
-  Item  2.0  Tsp   "Sesame Seeds",
-  Item  1.0  Tsp   "Sesame Oil",
-  Item  0.0  ML    "Kosher Salt",
-  Item 12.0  Oz    "Ramen Noodles",
-  Item 12.0  Whole "Scallion",               
-  Item  3.0  Tblsp "Grapeseed Oil",
-  Item 10.0  Oz    "Green Beans",
-  Item  0.5  Whole "Ginger Root",
-  Item  0.0  Gram  "White Pepper",
-  Item  1.0  Tblsp "Sesame Seeds"
+recipes n@"Ramen with Scallions" = Rx n 500.g [
+  Measure  2.0.T     "Red Pepper Flakes",
+  Measure  1.5.t     "Kosher Salt",
+  Measure  0.5.C     "Grapeseed Oil",
+  Take     0.5.whole "Ginger Root",
+  Take     2.0.whole "Garlic Clove",
+  Measure  2.0.t     "Sesame Seeds",
+  Measure  1.0.t     "Sesame Oil",
+  Measure  0.0.mL    "Kosher Salt",
+  Weigh   12.0.oz    "Ramen Noodles",
+  Take    12.0.whole "Scallion",
+  Measure  3.0.T     "Grapeseed Oil",
+  Weigh   10.0.oz    "Green Beans",
+  Take     0.5.whole "Ginger Root",
+  Weigh    0.0.g     "White Pepper",
+  Measure  1.0.T     "Sesame Seeds"
 ]
 -- https://cooking.nytimes.com/recipes/1022479-sheet-pan-gnocchi-with-mushrooms-and-spinach
-recipes n@"Sheet Pan Gnocci" = Rx n 4 [
-  Item  1.0  Lb    "Mixed Mushrooms",
-  Item  6.0  Tblsp "Olive Oil",
-  Item  4.0  Whole "Scallion",
-  Item  1.0  Whole "Large Shallot",
-  Item  5.0  Oz    "Baby Spinach",
-  Item  2.0  Tblsp "Dijon Mustartd",
-  Item  2.0  Tblsp "Horseradish",
-  Item  1.0  Tsp   "Honey",
-  Item  1.0  Tblsp "Butter (Unsalted)"
+recipes n@"Sheet Pan Gnocci" = Rx n 500.g [
+  Weigh    1.0.lb    "Mixed Mushrooms",
+  Measure  6.0.T     "Olive Oil",
+  Take     4.0.whole "Scallion",
+  Take     1.0.whole "Large Shallot",
+  Weigh    5.0.oz    "Baby Spinach",
+  Measure  2.0.T     "Dijon Mustartd",
+  Measure  2.0.T     "Horseradish",
+  Measure  1.0.t     "Honey",
+  Measure  1.0.T     "Butter (Unsalted)"
 ]
 -- https://cooking.nytimes.com/recipes/1021842-jamaican-curry-chicken-and-potatoes
-recipes n@"Jamaican Curry Chicken" = Rx n 4 [
-  Item  3.0  Lb    "Chicken Thighs",
-  Item  4.0  Tblsp "Garlic Powder",
-  Item  2.0  Tsp   "Kosher Salt",
-  Item  2.0  Tblsp "Olive Oil",
-  Item  1.0  Whole "Large Onion",
-  Item  4.0  Whole "Garlic Clove",
-  Item  2.0  Tblsp "Jamaican Curry Powder",
-  Item  1.0  Whole "Scotch Bonnet",              
-  Item  4.0  Med   "Yukon Gold Potato",
-  Item  2.0  Qt    "Chicken Stock",              
-  Item  1.0  Whole "Bay Leaf",                   
-  Item  2.0  Whole "Fresh Time Sprig",
-  Item  1.0  C     "Cornstarch",
-  Item  2.0  C     "Cooked White Rice"
+recipes n@"Jamaican Curry Chicken" = Rx n 2.lb [
+  Weigh    3.0.lb     "Chicken Thighs",
+  Measure  4.0.T      "Garlic Powder",
+  Measure  2.0.t      "Kosher Salt",
+  Measure  2.0.T      "Olive Oil",
+  Take     1.0.whole  "Large Onion",
+  Take     4.0.whole  "Garlic Clove",
+  Measure  2.0.T      "Jamaican Curry Powder",
+  Take     1.0.whole  "Scotch Bonnet",
+  Take     4.0.whole  "Medium Yukon Gold Potato",
+  Measure  2.0.qt     "Chicken Stock",
+  Take     1.0.whole  "Bay Leaf",
+  Take     2.0.whole  "Fresh Time Sprig",
+  Measure  1.0.C      "Cornstarch",
+  Measure  2.0.C      "Cooked White Rice"
 ]
 -- https://cooking.nytimes.com/recipes/1021066-chile-crisp-shrimp-and-green-beans
-recipes n@"Chile-Crisp Shrimp" = Rx n 4 [
-  Item  1.0  Tblsp "Low Sodium Soy Sauce",
-  Item  1.0  Tsp   "Granulated Sugar",
-  Item  1.0  Tsp   "Red Pepper Flakes",
-  Item  0.7  Tsp   "Ground Cumin",
-  Item  1.0  Lb    "Shrimp (Peeled and Deveined)",
-  Item  1.0  Tsp   "Kosher Salt",
-  Item  1.0  Tsp   "Black Pepper",
-  Item  4.0  Whole "Garlic Clove",
-  Item  1.0  Whole "Cinnamon Stick",
-  Item 10.0  Oz    "Green Beans",
-  Item  0.2  C     "Roasted, Salted Peanuts"     
+recipes n@"Chile-Crisp Shrimp" = Rx n 500.g [
+  Measure  1.0.T     "Low Sodium Soy Sauce",
+  Measure  1.0.t     "Granulated Sugar",
+  Measure  1.0.t     "Red Pepper Flakes",
+  Measure  0.7.t     "Ground Cumin",
+  Weigh    1.0.lb    "Shrimp (Peeled and Deveined)",
+  Measure  1.0.t     "Kosher Salt",
+  Measure  1.0.t     "Black Pepper",
+  Take     4.0.whole "Garlic Clove",
+  Take     1.0.whole "Cinnamon Stick",
+  Weigh   10.0.oz    "Green Beans",
+  Measure  0.2.C     "Roasted, Salted Peanuts"
 ]
 -- https://cooking.nytimes.com/recipes/8135-roasted-cod-and-potatoes
-recipes n@"Roasted Cod and Potatoes" = Rx n 4 [
-  Item  5.0  Med   "Medium Potatoes",
-  Item  5.0  Tblsp "Butter",
-  Item  5.0  Lb    "Cod Fillets"
+recipes n@"Roasted Cod and Potatoes" = Rx n 3.0.lb [
+  Take     5.0.whole  "Medium Potatoes",
+  Measure  5.0.T      "Butter",
+  Weigh    5.0.lb     "Cod Fillets"
 ]
+
 -- https://www.pbs.org/food/recipes/mapo-tofu/
-recipes n@"Mapo Tofu" = Rx n 3 [
-  Item  0.5  C     "Low Sodium Chicken Broth",
-  Item  2.0  Tsp   "Corn Starch",             
-  Item  1.0  Tsp   "Sugar",                   
-  Item  1.0  Tblsp "Sesame Oil",              
-  Item  2.0  Whole "Garlic Clove",            
-  Item  4.0  Whole "Scallion",                
-  Item  1.0  Tblsp "Black Bean Paste",        
-  Item  0.5  Tsp   "Sichuan Peppercorn",      
-  Item  6.0  Oz    "Ground Pork",             
-  Item  2.0  Tsp   "Doubanjiang",             
-  Item  4.0  Oz    "Silken Tofu"             
+recipes n@"Mapo Tofu" = Rx n 1.0.lb [
+  Measure  0.5.C     "Low Sodium Chicken Broth",
+  Measure  2.0.t     "Corn Starch",
+  Measure  1.0.t     "Sugar",
+  Measure  1.0.T     "Sesame Oil",
+  Take     2.0.whole "Garlic Clove",
+  Take     4.0.whole "Scallion",
+  Measure  1.0.T     "Black Bean Paste",
+  Measure  0.5.t     "Sichuan Peppercorn",
+  Weigh    6.0.oz    "Ground Pork",
+  Measure  2.0.t     "Doubanjiang",
+  Weigh   14.0.oz    "Silken Tofu"
 ]
-recipes _ = Rx "Unknown" 0 []
+
+recipes _ = Rx "Unknown" 0.g []
