@@ -21,7 +21,7 @@ import System.File
 import TUI
 import TUI.Component
 import TUI.MainLoop
-import TUI.MainLoop.Default
+import TUI.MainLoop.InputShim
 import Util
 
 
@@ -146,6 +146,7 @@ export partial
 spawn : String -> (Result -> IO Builtin.Unit) -> IO ThreadID
 spawn path post = fork (run post path)
 
+
 namespace SmartScale
   ||| An MVP of my "Smart Scale" concept
   |||
@@ -191,7 +192,7 @@ namespace SmartScale
   withCurrentWeight
     :  (Weight -> Raw.Container -> Raw.Container)
     -> SmartScale
-    -> IO $ Response SmartScale (List Raw.Container)
+    -> IO $ Response _ SmartScale (List Raw.Container)
   withCurrentWeight f self = case self.scale of
     Ok weight => update $ {containers $= update (f weight)} self
     _         => ignore
@@ -222,25 +223,6 @@ namespace SmartScale
     validateBarcode : String -> Maybe Barcode
     validateBarcode value = fromDigits value
 
-{-
-  ||| Update the current scale value when we receive a new packet.
-  export
-  onScale : List Bits8 -> SmartScale -> Response SmartScale _
-  onScale result self = Do $ {scale := decode result} self
-
-  ||| Render the given image path in sixel format when we receive an image event.
-  |||
-  ||| One issue here is that we have don't have access to the window
-  ||| here, so we have to choose a fixed image size to render to. But
-  ||| apparently it's important not call out to a subprocess while
-  ||| rendering.
-  export covering
-  onImage : String -> SmartScale -> Response SmartScale _
-  onImage path self = Run $ do
-    sixel <- sixelFromPath Max path path (MkArea 20 40)
-    pure $ {image := sixel} self
--}
-
   ||| Render the state of the SmartScale component.
   |||
   ||| This demonstrates how to manually lay out items on the screen
@@ -263,41 +245,67 @@ namespace SmartScale
         Nothing => "Scan or Type '*' to enter barcode"
         Just bc => show bc
 
-  ||| All the fun stuff is in here.
-  handle : Component.Handler SmartScale (List Raw.Container) Key
-  handle (Alpha '*') self = push (textInput "") (select self)
-  handle (Alpha 'q') self = yield $ toList self.containers
-  handle (Alpha 'r') self = update $ {containers $= update $ reset} self
-  handle (Alpha 's') self = withCurrentWeight setGross self
-  handle (Alpha 't') self = withCurrentWeight setTear  self
-  handle Up          self = update $ {containers $= goLeft} self
-  handle Down        self = update $ {containers $= goRight} self
-  handle Delete      self = update $ {containers $= delete} self
-  handle Enter       self = withCurrentWeight setGross self
-  handle Tab         self = update $ {containers $= goRight} self
-  handle Escape      self = exit
-  handle _           self = ignore
-
   ||| Create a new SmartScale with the given list of containers.
-  export
-  smartscale : List Raw.Container -> Component (List Raw.Container)
+  export covering
+  smartscale
+    :  List Raw.Container
+    -> Component (HSum [List Bits8, String, Key]) (List Raw.Container)
   smartscale containers = component (MkSmartScale {
     containers = fromList header containers,
     scale      = Empty,
     barcode    = Nothing,
     -- xxx: qr code for URL to server.
     image      = placeholder "No Image" (MkArea 20 40)
-  }) handle unavailable where
+  }) (union [onScale, onImage, onKey]) unavailable where
+    0 Events : List Type
+    Events = [List Bits8, String, Key]
+
     header : String
     header = "Barcode      Tear      Gross     Net "
+
+    ||| Update the current scale value when we receive a new packet.
+    export
+    onScale : Single.Handler SmartScale (List Raw.Container) (List Bits8)
+    onScale result self = update $ {scale := decode result} self
+
+    ||| Render the given image path in sixel format when we receive an image event.
+    |||
+    ||| One issue here is that we have don't have access to the window
+    ||| here, so we have to choose a fixed image size to render to. But
+    ||| apparently it's important not call out to a subprocess while
+    ||| rendering.
+    export covering
+    onImage : Single.Handler SmartScale (List Raw.Container) String
+    onImage path self = continue $ do
+      sixel <- sixelFromPath Max path path (MkArea 20 40)
+      pure $ {image := sixel} self
+
+    ||| All the fun stuff is in here.
+    onKey : Single.Handler {events = Events} SmartScale (List Raw.Container) Key
+    onKey (Alpha '*') self = push (textInput "") (select self)
+    onKey (Alpha 'q') self = yield $ toList self.containers
+    onKey (Alpha 'r') self = update $ {containers $= update $ reset} self
+    onKey (Alpha 's') self = withCurrentWeight setGross self
+    onKey (Alpha 't') self = withCurrentWeight setTear  self
+    onKey Up          self = update $ {containers $= goLeft} self
+    onKey Down        self = update $ {containers $= goRight} self
+    onKey Delete      self = update $ {containers $= delete} self
+    onKey Enter       self = withCurrentWeight setGross self
+    onKey Tab         self = update $ {containers $= goRight} self
+    onKey Escape      self = exit
+    onKey _           self = ignore
 
   ||| Main entry point1
   export covering
   run : IO ()
-  run = Prelude.ignore $ runComponent !getDefault (smartscale []) {-
-    On "Scale" onScale,
-    On "Image" onImage
-  ] -}
+  run = Prelude.ignore $ runComponent @{centered} !mainLoop (smartscale [])
+  where
+    mainLoop : IO (InputShim [List Bits8, String, Key])
+    mainLoop = do
+      mainLoop <- inputShim
+      image <- raw {eventT = String}     "Image"
+      scale <- raw {eventT = List Bits8} "Scale"
+      pure $ (mainLoop.addEvent image).addEvent scale
 
 ||| Entry point for basic scale command.
 export partial
