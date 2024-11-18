@@ -30,12 +30,14 @@ import JSON
 import System
 
 import TUI
-import TUI.MainLoop.Default
+import TUI.MainLoop.InputShim
 import TUI.Component
 import TUI.Component.Form
 import TUI.Component.Table
 import TUI.Component.FocusRing
 import TUI.Util
+
+import Data.Vect.Quantifiers as VQ
 
 %default total
 %language ElabReflection
@@ -70,39 +72,54 @@ record Food where
 
 ||| A spinner widget which contains all the units valid for `d`
 export
-unitSelector : {d : Dimension} -> UnitT d -> Component (UnitT d)
-unitSelector {d} u = Spinner.fromChoice @{show} {
+unitSelector
+  :  {0 events : List Type}
+  -> Has Key events
+  => {d : Dimension}
+  -> UnitT d
+  -> Component (HSum events) (UnitT d)
+unitSelector {d} u = Spinner.fromChoice @{%search} @{show} {
   choices = Units,
   choice = u,
   has = unitInUnits
 }
 
 ||| A numeric input and a quantity selector.
-quantityC : {d : Dimension} -> Quantity d -> Component (Quantity d)
+quantityC
+  :  {0 events : List Type}
+  -> Has Key events
+  => {d : Dimension}
+  -> Quantity d
+  -> Component (HSum events) (Quantity d)
 quantityC q = mapMaybe validate $ FocusRing.horizontal {
   items = [numeric q.amount, unitSelector q.unit],
   selection = 0,
-  onKey = onKey
+  onKey = only onKey
 } where
-  validate : All Maybe [Double, UnitT d] -> Maybe (Quantity d)
+  validate : VQ.All.All Maybe [Double, UnitT d] -> Maybe (Quantity d)
   validate [Just amount, Just unit] = Just $ Q amount unit
   validate _                        = Nothing
 
-  onKey : Component.Handler (FocusRing [Double, UnitT d]) (All Maybe [Double, UnitT d]) Key
+  onKey : Single.Handler
+    {events}
+    (FocusRing {events} [Double, UnitT d])
+    (VQ.All.All Maybe [Double, UnitT d]) Key
   onKey Left   self = update $ prev self
   onKey Right  self = update $ next self
   onKey Enter  self = yield $ self.values
   onKey Escape self = exit
-  onKey k      self = handleSelected k self
+  onKey k      self = handleSelected (inject k) self
 
 ||| Nutrient input
 nutritionC
-  :  SortedMap String Weight
-  -> Component (SortedMap String Weight)
+  :  {0 events : List Type}
+  -> Has Key events
+  => SortedMap String Weight
+  -> Component (HSum events) (SortedMap String Weight)
 nutritionC values = mapMaybe validate $ table {
   labels = ["Nutrient", "Amount", "Unit"],
   rows = mkRow <$> toList values,
-  onKey = onKey
+  handler = only onKey
 } where
   ||| The type of each column in the table
   Tys : Vect 3 Type
@@ -117,7 +134,7 @@ nutritionC values = mapMaybe validate $ table {
   validate rows = insertFrom' empty <$> traverse validateRow rows
 
   ||| Construct a new table row.
-  mkRow : (String, Weight) -> All Component Tys
+  mkRow : (String, Weight) -> All (Component (HSum events)) Tys
   mkRow (nutrient, Q amount unit) = [
     textInput nutrient,
     numeric amount,
@@ -127,7 +144,7 @@ nutritionC values = mapMaybe validate $ table {
   ||| Do some ad-hoc key handling for now.
   |||
   ||| Composition of components is still not quite right.
-  onKey : Component.Handler (Table Tys) (List (All Maybe Tys)) Key
+  onKey : Single.Handler {events} (Table {events} Tys) (List (All Maybe Tys)) Key
   onKey Left        self = update $ goLeft self
   onKey Right       self = update $ goRight self
   onKey Up          self = update $ goUp self
@@ -135,11 +152,13 @@ nutritionC values = mapMaybe validate $ table {
   onKey Tab         self = update $ next self
   onKey Escape      self = exit
   onKey (Alpha '+') self = update $ insert (mkRow ("New", 100.g)) self
-  onKey (Alpha '[') self = handleSelected Up self
-  onKey (Alpha ']') self = handleSelected Down self
-  onKey k           self = handleSelected k self
+  onKey (Alpha '[') self = handleSelected (inject Key.Up) self
+  onKey (Alpha ']') self = handleSelected (inject Key.Down) self
+  onKey k           self = handleSelected (inject k) self
 
-foodC : Food -> Component Food
+foodC
+  :  Food
+  -> Component (HSum [List Bits8, String, Key]) Food
 foodC food = happly MkFood <$> ariaForm [
   F "Name"         $ textInput food.name,
   F "Brand"        $ textInput food.brand,
@@ -169,5 +188,13 @@ missionWholeWheatOriginal = MkFood {
 export partial
 main : List String -> IO ()
 main [] = do
-  putStrLn $ show $ !(runComponent !getDefault (foodC missionWholeWheatOriginal))
+  putStrLn $ show $ !(runComponent !mainLoop (foodC missionWholeWheatOriginal))
+where
+    mainLoop : IO (InputShim [List Bits8, String, Key])
+    mainLoop = do
+      mainLoop <- inputShim
+      image <- raw {eventT = String}     "Image"
+      scale <- raw {eventT = List Bits8} "Scale"
+      pure $ (mainLoop.addEvent image).addEvent scale
+
 main _ = die "Invalid subcommand"
