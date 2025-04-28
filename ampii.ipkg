@@ -23,6 +23,9 @@ depends = contrib
 	, date
 	, quantifiers-extra
 	, tui
+	, tui-async
+	, async
+	, async-epoll
 
 -- modules to install
 modules = Container
