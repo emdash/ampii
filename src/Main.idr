@@ -40,9 +40,8 @@ dispatch sc          _    = putStrLn ("Invalid subcommand: " ++ sc)
 partial
 main : IO ()
 main = do
-  args  <- getArgs
+  args <- getArgs
   case args of
     []              => putStrLn "Impossible"
     [_]             => putStrLn "No subcommand"
     _ :: sc :: rest => dispatch sc rest
-

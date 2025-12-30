@@ -13,27 +13,24 @@ import Data.Buffer
 import Data.Either
 import Data.Vect
 import Derive.Prelude
+import IO.Async
+import IO.Async.Core
+import IO.Async.File
+import IO.Async.Loop.Epoll
 import JSON.Derive
 import Measures
-import System.Concurrency
 import System
-import System.File
+import System.File.Error
 import TUI
 import TUI.Component
 import TUI.MainLoop
-import TUI.MainLoop.InputShim
+import TUI.MainLoop.Async
 import Util
 
 
 %language ElabReflection
 %default total
 
-
-||| Move to Utils lib
-debug : Show a => a -> IO Builtin.Unit
-debug value = do
-  _ <- fPutStrLn stderr (show value)
-  pure ()
 
 ||| Unit to use when we can't determine from the USB traffic
 defaultUnit : UnitT Mass
@@ -48,14 +45,14 @@ units 11 = Ounces
 units 12 = Pounds
 units _  = defaultUnit
 
-||| Result of scale IO operation
+||| Reading of scale IO operation
 public export
-data Result
+data Reading
   = Empty
   | Weighing
   | Fault String
   | Ok Weight
-%runElab derive "Result" [Show,Ord,Eq,FromJSON,ToJSON]
+%runElab derive "Reading" [Show,Ord,Eq,FromJSON,ToJSON]
 
 ||| Calculate the current weight from the raw binary values
 calcWeight : Bits8 -> Int -> Int -> Int -> Weight
@@ -72,7 +69,7 @@ calcWeight unit msb lsb exponent =
       _    => Q (pow scaled (cast exponent)) unit
 
 ||| Decode the 6-byte HID packet into a scale value
-decode : List Bits8 -> Result
+decode : List Bits8 -> Reading
 decode [report, status, unit, exp, lsb, msb] =
   if report == 0x03
     then case status of
@@ -88,64 +85,29 @@ decode [report, status, unit, exp, lsb, msb] =
     else Fault "Error Reading Scale!"
 decode _ = Fault"Error, invalid packet"
 
-||| Synchronously read from the scale
+||| An EventSource representing a USB scale.
 |||
-||| We can't necessarily trust the first weight we get, so we wait for
-||| a few valid weights to come in before returning the value.
-export partial
-getWeight : String -> IO (Either String Weight)
-getWeight path = do
-  Just buf <- newBuffer 6 | Nothing => pure $ Left "Couldn't allocate buffer"
-  withFile path Read onError (loopN buf discardCount Nothing)
-  where
-    discardCount : Nat
-    discardCount = 5
-
-    loopN : Buffer -> Nat -> Maybe Weight -> File -> IO (Either String Weight)
-    loopN buf Z     r file = pure $ maybeToEither "impossible" r
-    loopN buf (S n) r file = do
-      putStrLn "\{show r}: (\{show n} tries remaining...)"
-      _ <- readBufferData file buf 0 6
-      d <- bufferData' buf
-      case decode d of
-        Ok w => loopN buf n     (Just w) file
-        _    => loopN buf (S n) r        file
-
-    onError : FileError -> IO String
-    onError err = pure $ show err
-
-||| Continuously read from the scale into a channel.
+||| Reads from the scale device, sending scale readings to the event
+||| queue.
 partial
-run : (USBScale.Result -> IO Builtin.Unit) -> String -> IO Builtin.Unit
-run post path = do
-  Just buf <- newBuffer 6
-    | Nothing => debug (the String "error, could not allocate buffer")
-  Right _ <- withFile path Read onError (loop post buf)
-    | Left err => debug err
-  pure ()
-  where
-    loop
-      : (Result -> IO Builtin.Unit)
-      -> Buffer
-      -> File
-      -> IO (Either String Builtin.Unit)
-    loop post buf file = do
-      _ <- readBufferData file buf 0 6
-      d <- bufferData' buf
-      post (decode d)
-      loop post buf file
+scale : Has Reading evts => String -> EventSource evts
+scale path queue = try [onErrno] $ do
+  withFile path flags 0 loop
+where
+  flags : Flags
+  flags = O_RDONLY <+> O_NONBLOCK
 
-    onError : FileError -> IO String
-    onError err = pure $ show err
+  loop : Fd -> Throws [Errno] ()
+  loop fd = do
+    bytes <- readnb fd ByteString 6
+    stdoutLn $ show bytes
+    weakenErrors $ putEvent queue $ decode $ unpack bytes
+    loop fd
 
-||| Spawn the scale reading thread
-|||
-||| The function parameter should post the USBScale.result to the main
-||| event queue.
-export partial
-spawn : String -> (Result -> IO Builtin.Unit) -> IO ThreadID
-spawn path post = fork (run post path)
-
+  onErrno : Catch () Errno
+  onErrno err = do
+    putEvent queue $ Fault $ show err
+    stderrLn "Scale thread exiting"
 
 namespace SmartScale
   ||| An MVP of my "Smart Scale" concept
@@ -178,7 +140,7 @@ namespace SmartScale
   record SmartScale where
     constructor MkSmartScale
     containers : VList Raw.Container
-    scale      : Result
+    scale      : Reading
     barcode    : Maybe Barcode
     image      : Image
 
@@ -249,24 +211,24 @@ namespace SmartScale
   export covering
   smartscale
     :  List Raw.Container
-    -> Component (HSum [List Bits8, String, Key]) (List Raw.Container)
+    -> Component (HSum [Reading, Key]) (List Raw.Container)
   smartscale containers = component (MkSmartScale {
     containers = fromList header containers,
     scale      = Empty,
     barcode    = Nothing,
     -- xxx: qr code for URL to server.
     image      = placeholder "No Image" (MkArea 20 40)
-  }) (union [onScale, onImage, onKey]) unavailable where
+  }) (union [onScale, {-onImage,-} onKey]) unavailable where
     0 Events : List Type
-    Events = [List Bits8, String, Key]
+    Events = [Reading, {-String,-} Key]
 
     header : String
     header = "Barcode      Tear      Gross     Net "
 
     ||| Update the current scale value when we receive a new packet.
     export
-    onScale : Single.Handler SmartScale (List Raw.Container) (List Bits8)
-    onScale result self = update $ {scale := decode result} self
+    onScale : Single.Handler SmartScale (List Raw.Container) Reading
+    onScale result self = update $ {scale := result} self
 
     ||| Render the given image path in sixel format when we receive an image event.
     |||
@@ -297,20 +259,14 @@ namespace SmartScale
 
   ||| Main entry point1
   export covering
-  run : IO ()
-  run = Prelude.ignore $ runComponent @{centered} !mainLoop (smartscale [])
+  run : String -> IO Builtin.Unit
+  run path = Prelude.ignore $ runComponent @{centered} mainLoop (smartscale [])
   where
-    mainLoop : IO (InputShim [List Bits8, String, Key])
-    mainLoop = do
-      mainLoop <- inputShim
-      image <- raw {eventT = String}     "Image"
-      scale <- raw {eventT = List Bits8} "Scale"
-      pure $ (mainLoop.addEvent image).addEvent scale
+    mainLoop : AsyncMain [Reading, Key]
+    mainLoop = asyncMain [scale path]
 
 ||| Entry point for basic scale command.
 export partial
 main : List String -> IO Builtin.Unit
-main ("--once" :: path :: _) = do
-  weight <- getWeight path
-  putStrLn $ show weight
-main _ = run
+main [path] = run path
+main _ = putStrLn "no scale path"

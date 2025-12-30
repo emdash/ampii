@@ -16,7 +16,7 @@ XXX: supress the broken pipe error if user quits from idris
 import os
 import http.server
 import json
-import multipart
+# import multipart
 import queue
 import sys
 import termios

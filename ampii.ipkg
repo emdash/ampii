@@ -13,8 +13,7 @@ authors = "brandon"
 -- langversion
 
 -- packages to add to search path
-depends = contrib
-	, indexed
+depends = indexed
 	, json
 	, elab-util
 	, sop
@@ -23,6 +22,9 @@ depends = contrib
 	, date
 	, quantifiers-extra
 	, tui
+	, tui-async
+	, async
+	, async-epoll
 
 -- modules to install
 modules = Container

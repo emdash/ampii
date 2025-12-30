@@ -66,7 +66,7 @@ eval All            _ = True
 ||| indexed over the type of the data, with specific constructors for
 ||| each type.
 data Prompt : a -> Type where
-  Direct     : a     -> Prompt a
+  Direct     :     a -> Prompt a
   FromScale  :          Prompt Weight
   QueryFood  : Query -> Prompt Barcode
   ChooseFood :          Prompt Barcode
