@@ -2,12 +2,6 @@
 type = "local"
 path = "."
 ipkg = "ampii.ipkg"
-test = "test/test.ipkg"
-
-[custom.all.ampii-test]
-type = "local"
-path = "test"
-ipkg = "test.ipkg"
 
 [custom.all.date]
 type   = "github"
@@ -15,13 +9,14 @@ url    = "https://github.com/emdash/idris-datetime"
 commit = "fetch-latest:main"
 ipkg   = "date.ipkg"
 
-# [custom.all.tui]
-# type   = "github"
-# url    = "https://github.com/emdash/idris2-tui"
-# commit = "fetch-latest:main"
-# ipkg   = "tui.ipkg"
-
 [custom.all.tui]
-type = "local"
-path = "/home/brandon/src/idris2-tui/"
-ipkg = "tui.ipkg"
+type   = "github"
+url    = "https://github.com/emdash/idris2-tui"
+commit = "fetch-latest:main"
+ipkg   = "tui.ipkg"
+
+[custom.all.tui-async]
+type   = "github"
+url    = "https://github.com/emdash/idris2-tui"
+commit = "fetch-latest:main"
+ipkg   = "tui-async/tui-async.ipkg"
