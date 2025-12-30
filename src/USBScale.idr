@@ -54,6 +54,11 @@ data Reading
   | Ok Weight
 %runElab derive "Reading" [Show,Ord,Eq,FromJSON,ToJSON]
 
+||| Subtract a tear weight from the reading.
+tear : Reading -> Weight -> Reading
+tear (Ok w) t = Ok $ w - t
+tear r      _ = r
+
 ||| Calculate the current weight from the raw binary values
 calcWeight : Bits8 -> Int -> Int -> Int -> Weight
 calcWeight unit msb lsb exponent =
@@ -157,6 +162,7 @@ namespace SmartScale
     -> IO $ Response _ SmartScale (List Raw.Container)
   withCurrentWeight f self = case self.scale of
     Ok weight => update $ {containers $= update (f weight)} self
+    Empty     => update $ {containers $= update (f 0.g)}    self
     _         => ignore
 
   ||| Try to select the barcode characters we collected.
@@ -194,13 +200,18 @@ namespace SmartScale
     paint state window self = do
       window <- packLeft Normal window self.image
       window <- packLeft state' window VRule
-      window <- packTop  Normal window $ show self.scale
+      window <- packTop  Normal window $ show curWeight
       window <- packTop  Normal window barcode
       window <- packTop  state' window HRule
       ignore $  packTop  state  window self.containers
     where
       state' : State
       state' = demoteFocused state
+
+      curWeight : Reading
+      curWeight = case (.tear) <$> self.containers.selected of
+        Nothing => self.scale
+        Just t  => tear self.scale t
 
       barcode : String
       barcode = case self.barcode of
