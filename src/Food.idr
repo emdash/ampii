@@ -30,7 +30,7 @@ import JSON
 import System
 
 import TUI
-import TUI.MainLoop.InputShim
+import TUI.MainLoop.Async
 import TUI.Component
 import TUI.Component.Form
 import TUI.Component.Table
@@ -157,8 +157,10 @@ nutritionC values = mapMaybe validate $ table {
   onKey k           self = handleSelected (inject k) self
 
 foodC
-  :  Food
-  -> Component (HSum [List Bits8, String, Key]) Food
+  :  {0 events : List Type}
+  -> Has Key events
+  => Food
+  -> Component (HSum events) Food
 foodC food = happly MkFood <$> ariaForm [
   F "Name"         $ textInput food.name,
   F "Brand"        $ textInput food.brand,
@@ -187,14 +189,11 @@ missionWholeWheatOriginal = MkFood {
 
 export partial
 main : List String -> IO ()
-main [] = do
-  putStrLn $ show $ !(runComponent !mainLoop (foodC missionWholeWheatOriginal))
+main args = do
+  putStrLn $ show $ !(runComponent mainLoop ui)
 where
-    mainLoop : IO (InputShim [List Bits8, String, Key])
-    mainLoop = do
-      mainLoop <- inputShim
-      image <- raw {eventT = String}     "Image"
-      scale <- raw {eventT = List Bits8} "Scale"
-      pure $ (mainLoop.addEvent image).addEvent scale
+    ui : Component (HSum [Key]) Food
+    ui = foodC missionWholeWheatOriginal
 
-main _ = die "Invalid subcommand"
+    mainLoop : AsyncMain [Key]
+    mainLoop = asyncMain []
