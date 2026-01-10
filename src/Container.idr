@@ -6,6 +6,10 @@ import DirDB
 import Food
 import JSON.Derive
 import Measures
+import System
+import System.File
+import System.File.ReadWrite
+import System.File.Virtual
 import TUI
 
 
@@ -194,3 +198,21 @@ View (ContainerB _) where
     paint @{show} state tear    self.tear
     paint @{show} state gross   self.gross
     paint @{show} state net     self.net
+
+||| Open a todo list file, and try to parse its contents into a list
+||| of items. This doesn't do much in the way of error handling.
+export covering
+fromFile : String -> IO (Maybe (List $ Raw.Container))
+fromFile path = do
+  putStrLn "read file \{path}"
+  Right contents <- readFile path | Left err => pure Nothing
+  putStrLn "contents"
+  case decode contents of
+    Left  err      => pure Nothing
+    Right contents => pure $ Just contents
+
+||| Save the given list of items to the given path as a JSON document.
+export covering
+toFile : String -> List Raw.Container -> IO ()
+toFile path todolist = do
+  ignore $ writeFile path $ encode todolist
