@@ -16,7 +16,9 @@ import TUI.View
 public export
 data Barcode
   = EAN13 (Vect 13 Char)
-  | UPC   (Vect 12 Char)
+  | EAN8  (Vect 8  Char)
+  | UPC_A (Vect 12 Char)
+  | UPC_E (Vect 7  Char)
   | User  (Vect 4  Char)
 %runElab derive "Barcode" [Eq,Ord, FromJSON, ToJSON]
 
@@ -24,13 +26,17 @@ data Barcode
 export
 toString : Barcode -> String
 toString (EAN13 bc) = pack $ toList bc
-toString (UPC   bc) = pack $ toList bc
+toString (EAN8  bc) = pack $ toList bc
+toString (UPC_A bc) = pack $ toList bc
+toString (UPC_E bc) = pack $ toList bc
 toString (User  bc) = pack $ toList bc
 
 export
 Show Barcode where
   show (EAN13 bc) = "EAN13:" ++ pack (toList bc)
-  show (UPC   bc) = "UPC:"   ++ pack (toList bc)
+  show (EAN8  bc) = "EAN8:"  ++ pack (toList bc)
+  show (UPC_A bc) = "UPC-A:" ++ pack (toList bc)
+  show (UPC_E bc) = "UPC-E:" ++ pack (toList bc)
   show (User  bc) = "User:"  ++ pack (toList bc)
 
 ||| Barcodes are serialized as a string with the standard prefixed.
@@ -58,7 +64,9 @@ parseVect s = case toVect k (unpack s) of
 parseBarcode : Parser String Barcode
 parseBarcode s = case forget $ split (':' ==) s of
   ["EAN13", r] => EAN13 <$> parseVect r
-  ["UPC", r]   => UPC   <$> parseVect r
+  ["EAN8",  r] => EAN8  <$> parseVect r
+  ["UPC-A", r] => UPC_A <$> parseVect r
+  ["UPC-E", r] => UPC_E <$> parseVect r
   ["User", r]  => User  <$> parseVect r
   _            => fail "Invalid barcode: \{s}"
 
@@ -72,7 +80,9 @@ export
 fromDigits : String -> Maybe Barcode
 fromDigits s = case length s of
   4  => map User  $ toVect  4 $ unpack s
-  12 => map UPC   $ toVect 12 $ unpack s
+  7  => map UPC_E $ toVect  7 $ unpack s
+  8  => map EAN8  $ toVect  8 $ unpack s
+  12 => map UPC_A $ toVect 12 $ unpack s
   13 => map EAN13 $ toVect 13 $ unpack s
   _  => Nothing
 
@@ -89,8 +99,10 @@ fromString s = case fromDigits s of
 ||| Implement PathSafe for Barcode
 export
 PathSafe (Barcode) where
+  toPath self@(EAN8  xs) = toMaybe (all isDigit xs) $ show self
   toPath self@(EAN13 xs) = toMaybe (all isDigit xs) $ show self
-  toPath self@(UPC   xs) = toMaybe (all isDigit xs) $ show self
+  toPath self@(UPC_E xs) = toMaybe (all isDigit xs) $ show self
+  toPath self@(UPC_A xs) = toMaybe (all isDigit xs) $ show self
   toPath self@(User  xs) = toMaybe (all isDigit xs) $ show self
   fromPath = fromDigits
 
@@ -99,4 +111,3 @@ export
 %hint
 viewImpl : View Barcode
 viewImpl = show
- 
