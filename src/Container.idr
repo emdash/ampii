@@ -181,6 +181,11 @@ hasBarcode : HasBarcode foodT => Barcode -> ContainerB foodT -> Bool
 hasBarcode (User id) self = id      == self.id
 hasBarcode barcode   self = fromMaybe False $ (barcode ==) <$> self.barcode
 
+export
+View Id where
+  size _ = MkArea 4 1
+  paint state window self = paint @{show} state window (User self)
+
 ||| This is the 'row' View for container.
 export
 View (ContainerB _) where
@@ -194,7 +199,7 @@ View (ContainerB _) where
     let (barcode, top   ) = top.splitLeft 13
     let (tear,    top   ) = top.splitLeft 10
     let (gross,   net   ) = top.splitLeft 10
-    paint @{show} state barcode (User self.id)
+    paint         state barcode self.id
     paint @{show} state tear    self.tear
     paint @{show} state gross   self.gross
     paint @{show} state net     self.net

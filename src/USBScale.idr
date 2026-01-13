@@ -4,29 +4,35 @@
 ||| to decode the weight.
 module USBScale
 
-
-import Barcode
-import Container
-import Control.ANSI
+-- stdlib imports
 import Data.Bits
 import Data.Buffer
 import Data.Either
 import Data.Vect
 import Derive.Prelude
+import System
+import System.File.Error
+import System.File.ReadWrite
+import System.File.Virtual
+
+-- third-party imports
 import IO.Async
 import IO.Async.Core
 import IO.Async.File
 import IO.Async.Loop.Epoll
 import JSON.Derive
-import Measures
-import System
-import System.File.Error
 import TUI
 import TUI.Component
 import TUI.MainLoop
 import TUI.MainLoop.Async
-import Util
 
+-- application modules
+import Barcode
+import Container
+import Control.ANSI
+import Inventory
+import Measures
+import Util
 
 %language ElabReflection
 %default total
@@ -144,52 +150,102 @@ namespace SmartScale
   |||   - escape will reset both weights
   record SmartScale where
     constructor MkSmartScale
-    containers : VList Raw.Container
+    ||| Zipper of containers used for display
+    containers : VList Container.Id
+    ||| Inventory database handle
+    inventory  : Inventory
+    ||| Current scale reading
     scale      : Reading
+    ||| Last Barcode Entered By User
     barcode    : Maybe Barcode
+    ||| Current Image
     image      : Image
+
+  export
+  (.selectedContainer) : SmartScale -> Maybe Raw.Container
+  (.selectedContainer) self = join
+     $  self.inventory.getContainer
+    <$> self.containers.selected
+
+  (.updateSelectedPure)
+    :  SmartScale
+    -> (Raw.Container -> Raw.Container)
+    -> SmartScale
+  (.updateSelectedPure) self f = case self.containers.selected of
+    Nothing => self
+    Just id => {inventory $= update id f} self
+
+  export
+  (.updateSelected)
+    :  SmartScale
+    -> (Raw.Container -> Raw.Container)
+    -> IO $ Response _ SmartScale Inventory
+  (.updateSelected) self f = update $ self.updateSelectedPure f
 
   ||| Helper to construct actions which depend on current weight.
   |||
   ||| The common logic is that if the current scale `Result` is not a
-  ||| `Weight`, then don't do *anything*. Otherwise, update the
-  ||| current container with the appropriate function partially
+  ||| `Weight`, then do nothing.
+  |||
+  ||| Otherwise, update the current container with the function partially
   ||| applied to the given weight.
-  public export
-  withCurrentWeight
-    :  (Weight -> Raw.Container -> Raw.Container)
+  export
+  (.withWeight)
+    :  SmartScale
+    -> (Weight -> Raw.Container -> Raw.Container)
+    -> (Raw.Container -> Raw.Container)
+  (.withWeight) self f = case self.scale of
+      Ok weight => (f weight)
+      Empty     => (f 0.g)
+      _         => id
+
+  ||| Helper to construct actions which depend on current weight.
+  |||
+  ||| The common logic is that if the current scale `Result` is not a
+  ||| `Weight`, then do nothing.
+  |||
+  ||| Otherwise, update the current container with the function partially
+  ||| applied to the given weight.
+  export
+  (.updateSelectedWithWeight)
+    :  SmartScale
+    -> (Weight -> Raw.Container -> Raw.Container)
+    -> IO $ Response _ SmartScale Inventory
+  (.updateSelectedWithWeight) self f = self.updateSelected $ self.withWeight f
+
+  export
+  (.tearFromNet)
+    :  SmartScale
+    -> Maybe Double
     -> SmartScale
-    -> IO $ Response _ SmartScale (List Raw.Container)
-  withCurrentWeight f self = case self.scale of
-    Ok weight => update $ {containers $= update (f weight)} self
-    Empty     => update $ {containers $= update (f 0.g)}    self
-    _         => ignore
+  (.tearFromNet) self Nothing    = self
+  (.tearFromNet) self (Just net) = self.updateSelectedPure $ setTearFromNet $ net.g
+
 
   ||| Try to select the barcode characters we collected.
   |||
   ||| This is a bit complicated.
   |||
   ||| - If the barcode is invalid, we clear the input field
-  ||| - If the barcode is valid user barcode, we try to select it.
-  |||   - If it's not present, then we create a new barcode.
-  ||| - If the barcode is a valid Food barcode, then we try to select it.
-  |||   - If it's not present, no action is taken.
-  select : (self : SmartScale) -> (s : Maybe String) -> SmartScale
+  ||| - If the barcode is valid user barcode, try to select it.
+  |||   - If it's not present, load container from inventory.
+  |||   - If container not present, prompt user to create new container
+  ||| - If barcode is a valid upc, look up upc in inventory
+  |||   - If no container is associated with upc:
+  |||     - Look up food
+  |||       - if no food exists, prompt user to create new food record.
+  |||     - Create new blank container associated with food.
+  select : (self : SmartScale) -> (s : Maybe String) -> IO $ Response _ SmartScale Inventory
   select self bc = case join $ validateBarcode <$> bc of
-    -- barcode is invalid, but we still need to clear the barcode chars
-    Nothing => {barcode := Nothing} self
-    -- valid user barcode (which is a container id), select or add.
-    Just (User id) => {containers $= findOrInsert' id} self
-    -- valid food barcode, just do our best to select it.
-    -- XXX: if it's not present, or there's multiple matches, we
-    -- should pop up a dialog.
-    Just bc => {containers $= find' (hasBarcode bc)} self
+   Nothing => ignore
+   Just bc => case self.inventory.lookupBarcode bc of
+     Zero       => ?createContainer
+     Single id  => update $ {containers $= findOrInsert (== id) id } self
+     Choice ids => ?selectIdf
   where
-    findOrInsert' : Id -> VList Raw.Container -> VList Raw.Container
-    findOrInsert' id self = findOrInsert (hasBarcode (User id)) (empty id Reusable) self
-
     validateBarcode : String -> Maybe Barcode
     validateBarcode value = fromDigits value
+-}
 
   ||| Render the state of the SmartScale component.
   |||
@@ -209,9 +265,10 @@ namespace SmartScale
       state' = demoteFocused state
 
       curWeight : Reading
-      curWeight = case (.tear) <$> self.containers.selected of
-        Nothing => self.scale
-        Just t  => tear self.scale t
+      curWeight = fromMaybe self.scale
+         $  tear self.scale
+        <$> (.tear)
+        <$> self.selectedContainer
 
       barcode : String
       barcode = case self.barcode of
@@ -221,10 +278,11 @@ namespace SmartScale
   ||| Create a new SmartScale with the given list of containers.
   export covering
   smartscale
-    :  List Raw.Container
-    -> Component (HSum [Reading, Key]) (List Raw.Container)
-  smartscale containers = component (MkSmartScale {
-    containers = fromList header containers,
+    :  Inventory
+    -> Component (HSum [Reading, Key]) Inventory
+  smartscale inventory = component (MkSmartScale {
+    containers = empty "Active Containers",
+    inventory  = inventory,
     scale      = Empty,
     barcode    = Nothing,
     -- xxx: qr code for URL to server.
@@ -238,7 +296,7 @@ namespace SmartScale
 
     ||| Update the current scale value when we receive a new packet.
     export
-    onScale : Single.Handler SmartScale (List Raw.Container) Reading
+    onScale : Single.Handler SmartScale Inventory Reading
     onScale result self = update $ {scale := result} self
 
     ||| Render the given image path in sixel format when we receive an image event.
@@ -248,36 +306,44 @@ namespace SmartScale
     ||| apparently it's important not call out to a subprocess while
     ||| rendering.
     export covering
-    onImage : Single.Handler SmartScale (List Raw.Container) String
+    onImage : Single.Handler SmartScale Inventory String
     onImage path self = continue $ do
       sixel <- sixelFromPath Max path path (MkArea 20 40)
       pure $ {image := sixel} self
 
     ||| All the fun stuff is in here.
-    onKey : Single.Handler {events = Events} SmartScale (List Raw.Container) Key
-    onKey (Alpha '*') self = push (textInput "") (select self)
-    onKey (Alpha 'q') self = yield $ toList self.containers
-    onKey (Alpha 'r') self = update $ {containers $= update $ reset} self
-    onKey (Alpha 's') self = withCurrentWeight setGross self
-    onKey (Alpha 't') self = withCurrentWeight setTear  self
+    onKey : Single.Handler {events = Events} SmartScale Inventory Key
+    onKey (Alpha '*') self = push (selectWidget self) (fromMaybe self)
+    onKey (Alpha 'q') self = yield  $ self.inventory
+    onKey (Alpha 'r') self = self.updateSelected reset
+    onKey (Alpha 't') self = self.updateSelectedWithWeight setTear
+    onKey (Alpha 'T') self = push (numeric 0.0) self.tearFromNet
     onKey Up          self = update $ {containers $= goLeft} self
     onKey Down        self = update $ {containers $= goRight} self
     onKey Delete      self = update $ {containers $= delete} self
-    onKey Enter       self = withCurrentWeight setGross self
+    onKey Enter       self = self.updateSelectedWithWeight setGross
     onKey Tab         self = update $ {containers $= goRight} self
     onKey Escape      self = exit
     onKey _           self = ignore
 
   ||| Main entry point1
   export covering
-  run : String -> IO Builtin.Unit
-  run path = Prelude.ignore $ runComponent @{centered} mainLoop (smartscale [])
+  run : Maybe String -> IO Builtin.Unit
+  run path = do
+    result <- runComponent @{centered} mainLoop (smartscale !(load "./inventory.json"))
+    case result of
+      Nothing => pure ()
+      Just inventory => inventory.save "inventory.json"
   where
     mainLoop : AsyncMain [Reading, Key]
-    mainLoop = asyncMain [scale path]
+    mainLoop = case path of
+      Nothing   => asyncMain [dummy (Fault "no device")]
+      Just path => asyncMain [scale path]
 
 ||| Entry point for basic scale command.
 export partial
 main : List String -> IO Builtin.Unit
-main [path] = run path
-main _ = putStrLn "no scale path"
+main []     = run Nothing
+main [path] = run $ Just path
+main ["test", bc] = putStrLn $ show $ the (Maybe Barcode) (fromDigits bc)
+main _ = putStrLn "expected 0 or 1 argument"
