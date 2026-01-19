@@ -43,7 +43,7 @@ module Measures
 
 import Data.Either
 import Derive.Prelude
-import JSON.Derive
+import JSON.Simple.Derive
 
 
 %language ElabReflection

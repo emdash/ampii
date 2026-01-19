@@ -20,14 +20,10 @@
 ||| A Food Database
 module Food
 
+import Data.Vect.Quantifiers as VQ
 
-import Measures
-import Barcode
-import Data.SortedMap
-import Data.SortedSet
-import JSON.Derive
-import JSON
-import System
+import JSON.Simple
+import JSON.Simple.Derive
 
 import TUI
 import TUI.MainLoop.Async
@@ -37,7 +33,12 @@ import TUI.Component.Table
 import TUI.Component.FocusRing
 import TUI.Util
 
-import Data.Vect.Quantifiers as VQ
+import Measures
+import Barcode
+import Data.SortedMap
+import Data.SortedSet
+import System
+
 
 %default total
 %language ElabReflection
@@ -69,6 +70,13 @@ record Food where
   calories    : Double
   nutrition   : Nutrition
 %runElab derive "Food" [Show, Eq, ToJSON, FromJSON]
+
+||| Get the calorig content as a ratio of Calories per 100g
+|||
+||| XXX: handle this in measures properly
+export
+(.calsPer100g) : Food -> Double
+(.calsPer100g) self = self.calories * 100 / (cast (self.servingSize `as` Grams))
 
 ||| A spinner widget which contains all the units valid for `d`
 export
@@ -155,6 +163,38 @@ nutritionC values = mapMaybe validate $ table {
   onKey (Alpha '[') self = handleSelected (inject Key.Up) self
   onKey (Alpha ']') self = handleSelected (inject Key.Down) self
   onKey k           self = handleSelected (inject k) self
+
+fields : List String
+fields = [
+  "Name",
+  "Brand",
+  "Barcode",
+  "Serving Size",
+  "Calories"
+]
+
+export
+View Food where
+  size = const $ sizeVertical fields
+  paint state window self = do
+    let split = sizeVertical fields
+    let (left, right) = window.splitRight (cast split.width)
+    right <- packLeft state right VRule
+
+    left  <- packTop state left  "Name"
+    right <- packTop state right self.name
+
+    left  <- packTop state left  "Brand"
+    right <- packTop state right self.brand
+
+    left  <- packTop state left  "Barcode"
+    right <- packTop state right self.barcode
+
+    left  <- packTop state left  "Serving Size"
+    right <- packTop state right $ show self.servingSize
+
+    left  <- packTop state left  "Calories/100g"
+    ignore $ packTop state right $ show self.calsPer100g
 
 foodC
   :  {0 events : List Type}

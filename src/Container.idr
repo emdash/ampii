@@ -1,22 +1,32 @@
 module Container
 
-import Barcode
-import Date
-import DirDB
-import Food
-import JSON.Derive
-import Measures
 import System
 import System.File
 import System.File.ReadWrite
 import System.File.Virtual
+
+import JSON.Simple
+import JSON.Simple.Derive
 import TUI
+
+import Barcode
+import Date
+import Food
+import Measures
 
 
 %default total
 %language ElabReflection
 
 
+FromJSON Date where
+  fromJSON (JString x) = case fromString x of
+    Nothing => fail "Couldn't parse date"
+    Just d  => Right d
+  fromJSON x = fail "Expected a string, got \{show x}"
+
+ToJSON Date where
+  toJSON = JString . toString
 
 ||| The type of container IDs.
 |||
@@ -25,16 +35,19 @@ public export
 0 Id : Type
 Id = Vect 4 Char
 
-||| Implement PathSafe for container IDs
-|||
-||| Container ids are vectors of four characters. They are safe to
-||| encode as paths, since each character must be a digit. Ordinary
-||| barcodes cannot encode non-numeric characters, so anything other
-||| than digits is unexpected.
-export
-PathSafe Id where
-  toPath self = toMaybe (all isDigit self) $ delay $ pack $ toList self
-  fromPath self = toVect 4 $ unpack self
+public export
+FromJSONKey Id where
+  fromKey x = case unpack x of
+    [a, b, c, d] => Right $ [a, b, c, d]
+    _            => fail "Invalid Container ID"
+
+public export
+ToJSONKey Id where
+  toKey = pack . toList
+
+public export
+capture : Ord Id
+capture = %search
 
 ||| How long a given food item is expected to last.
 |||
@@ -50,7 +63,7 @@ data LifeTime
   | Expires       Date
   | Forever
   | Unknown
-%runElab derive "LifeTime" [Show,Eq,FromJSON,ToJSON]
+%runElab derive "LifeTime" [Show, Eq, FromJSON, ToJSON]
 
 ||| Conservatively report the expiry date of a container
 public export
@@ -203,21 +216,3 @@ View (ContainerB _) where
     paint @{show} state tear    self.tear
     paint @{show} state gross   self.gross
     paint @{show} state net     self.net
-
-||| Open a todo list file, and try to parse its contents into a list
-||| of items. This doesn't do much in the way of error handling.
-export covering
-fromFile : String -> IO (Maybe (List $ Raw.Container))
-fromFile path = do
-  putStrLn "read file \{path}"
-  Right contents <- readFile path | Left err => pure Nothing
-  putStrLn "contents"
-  case decode contents of
-    Left  err      => pure Nothing
-    Right contents => pure $ Just contents
-
-||| Save the given list of items to the given path as a JSON document.
-export covering
-toFile : String -> List Raw.Container -> IO ()
-toFile path todolist = do
-  ignore $ writeFile path $ encode todolist

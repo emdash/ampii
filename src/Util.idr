@@ -21,6 +21,11 @@ import Data.SortedMap
 import Data.Vect
 import Data.Vect.Quantifiers
 import Language.JSON
+import System.File
+import System.File.ReadWrite
+
+import JSON.Simple
+import JSON.Simple.Derive
 
 
 %default total
@@ -83,3 +88,22 @@ namespace Data.SortedMap
     foldIn accum (k, v) = case lookup k accum of
       Nothing => SortedMap.insert k [v]       accum
       Just vs => SortedMap.insert k (v :: vs) accum
+
+namespace Files
+  ||| Open a todo list file, and try to parse its contents into a list
+  ||| of items. This doesn't do much in the way of error handling.
+  export covering
+  load : HasIO io => FromJSON t => String -> io (Maybe t)
+  load path = do
+    putStrLn "read file \{path}"
+    Right contents <- readFile path | Left err => pure Nothing
+    putStrLn "contents"
+    case decode contents of
+      Left  err      => pure Nothing
+      Right contents => pure $ Just contents
+
+  ||| Save the given list of items to the given path as a JSON document.
+  export covering
+  save : HasIO io => ToJSON t => String -> t -> io ()
+  save path value = do
+    ignore $ writeFile path $ encode value

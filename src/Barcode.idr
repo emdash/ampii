@@ -3,8 +3,8 @@ module Barcode
 
 
 import Derive.Prelude
-import JSON.Derive
-import DirDB
+import JSON.Simple
+import JSON.Simple.Derive
 import TUI.View
 
 
@@ -20,7 +20,7 @@ data Barcode
   | UPC_A (Vect 12 Char)
   | UPC_E (Vect 7  Char)
   | User  (Vect 4  Char)
-%runElab derive "Barcode" [Eq,Ord, FromJSON, ToJSON]
+%runElab derive "Barcode" [Eq,Ord]
 
 ||| Convert barcode to a string without length prefix.
 export
@@ -42,7 +42,11 @@ Show Barcode where
 ||| Barcodes are serialized as a string with the standard prefixed.
 export
 ToJSON Barcode where
-  toJSON bc = string $ show bc
+  toJSON bc = JString $ show bc
+
+export
+ToJSONKey Barcode where
+  toKey bc = show bc
 
 -- thanks to Stephen Hoek again, for explaining how to write this. I
 -- struggled to figure it out on my own.
@@ -75,6 +79,10 @@ export
 FromJSON Barcode where
   fromJSON = withString "Barcode" parseBarcode
 
+export
+FromJSONKey Barcode where
+  fromKey = parseBarcode
+
 ||| Construct a barcode from an unprefixed string
 export
 fromDigits : String -> Maybe Barcode
@@ -95,16 +103,6 @@ fromString : String -> Barcode
 fromString s = case fromDigits s of
   Nothing => idris_crash "Not a valid barcode"
   Just b  => b
-
-||| Implement PathSafe for Barcode
-export
-PathSafe (Barcode) where
-  toPath self@(EAN8  xs) = toMaybe (all isDigit xs) $ show self
-  toPath self@(EAN13 xs) = toMaybe (all isDigit xs) $ show self
-  toPath self@(UPC_E xs) = toMaybe (all isDigit xs) $ show self
-  toPath self@(UPC_A xs) = toMaybe (all isDigit xs) $ show self
-  toPath self@(User  xs) = toMaybe (all isDigit xs) $ show self
-  fromPath = fromDigits
 
 ||| The default view for Barcode is provided by the `show` blanket impl.
 export
